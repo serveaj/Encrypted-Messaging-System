@@ -1,0 +1,8 @@
+# Ignore local dependencies
+node_modules
+npm-debug.log
+.npm
+
+# Ignore build output
+build
+dist
