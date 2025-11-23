@@ -1,0 +1,295 @@
+/* Whole page background and text */
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #1a1a2e; /* Dark background color */
+  color: #e0e0e0; /* Light text color */
+}
+
+/* Container that centers the login card on the page */
+.login-page-container {
+  display: flex;
+  justify-content: center; /* Center horizontally */
+  align-items: center;     /* Center vertically */
+  min-height: 100vh;       /* Full screen height */
+  background: radial-gradient(circle at 10% 20%, rgba(2, 6, 23, 1) 0%, rgba(90, 78, 206, 0.1) 40%, rgba(13, 17, 43, 1) 90%), 
+              radial-gradient(circle at 90% 80%, rgba(2, 6, 23, 1) 0%, rgba(255, 0, 150, 0.1) 40%, rgba(13, 17, 43, 1) 90%);
+  background-size: cover;
+  background-attachment: fixed;
+  overflow: hidden;
+}
+
+/* Wrapper around the login card with glowing animated border */
+.login-card-wrapper {
+  position: relative;
+  width: 380px;
+  height: auto;
+  padding: 3px; /* Space for border */
+  background: transparent;
+  border-radius: 15px;
+  overflow: hidden; /* Hide anything outside the border */
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  animation: glow-pulse 2s infinite alternate ease-in-out; /* Glow animation */
+}
+
+/* Animated border effect around the card */
+.login-card-wrapper::before,
+.login-card-wrapper::after {
+  content: '';
+  position: absolute;
+  top: -100%;
+  left: -100%;
+  width: 300%;
+  height: 300%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    #ff008a 25%, /* Pink */
+    #00ffff 50%, /* Cyan */
+    #ff008a 75%, /* Pink */
+    transparent 100%
+  );
+  animation: rotateBorder 4s linear infinite; /* Rotating border */
+  z-index: -1; /* Behind card */
+}
+
+/* Glow effect for the border */
+.login-card-wrapper::after {
+  filter: blur(20px);
+  opacity: 0.8;
+}
+
+/* Animation for rotating border */
+@keyframes rotateBorder {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Animation for glowing pulse */
+@keyframes glow-pulse {
+    0% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.2), 0 0 20px rgba(255, 0, 138, 0.1); }
+    50% { box-shadow: 0 0 15px rgba(0, 255, 255, 0.4), 0 0 30px rgba(255, 0, 138, 0.3); }
+    100% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.2), 0 0 20px rgba(255, 0, 138, 0.1); }
+}
+
+/* Actual login card box */
+.login-card {
+  position: relative;
+  background-color: #2a2a3e; /* Dark card background */
+  padding: 40px;
+  border-radius: 12px;
+  text-align: center;
+  z-index: 1; /* Keep content above border */
+  backdrop-filter: blur(5px); /* Slight blur effect */
+  -webkit-backdrop-filter: blur(5px);
+  box-shadow: 0 5px 25px rgba(0, 0, 0, 0.5);
+}
+
+/* Login title text */
+.login-title {
+  font-size: 2.2em;
+  margin-bottom: 30px;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+/* Form layout */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px; /* Space between inputs */
+}
+
+/* Input field group */
+.input-group {
+  text-align: left;
+}
+
+/* Label above input */
+.input-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  color: #cccccc;
+}
+
+/* Input box styling */
+.input-group input {
+  width: calc(100% - 20px);
+  padding: 12px 10px;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background-color: #33334f; /* Dark input background */
+  color: #e0e0e0;
+  font-size: 1em;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Input focus effect */
+.input-group input:focus {
+  border-color: #00ffff; /* Cyan border */
+  outline: none;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.6);
+}
+
+/* Password Input Specific Styles */
+.password-input-group {
+  position: relative;
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper input {
+  width: 100%;
+  padding-right: 45px; /* Make space for the toggle button */
+  box-sizing: border-box;
+}
+
+/* Hide browser default password reveal icons */
+.password-input-wrapper input::-ms-reveal,
+.password-input-wrapper input::-ms-clear {
+  display: none;
+}
+
+.password-input-wrapper input::-webkit-credentials-auto-fill-button,
+.password-input-wrapper input::-webkit-clear-button,
+.password-input-wrapper input::-webkit-inner-spin-button,
+.password-input-wrapper input::-webkit-textfield-decoration-container {
+  display: none;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+}
+
+.password-toggle-btn:hover {
+  background-color: rgba(0, 255, 255, 0.1);
+}
+
+.password-toggle-btn:active {
+  background-color: rgba(0, 255, 255, 0.2);
+  transform: translateY(-50%) scale(0.95);
+}
+
+.password-toggle-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  opacity: 0.7;
+  transition: all 0.3s ease;
+  filter: brightness(0) invert(1); /* Make icons white to match your theme */
+}
+
+.password-toggle-btn:hover .password-toggle-icon {
+  opacity: 1;
+  filter: brightness(0) invert(0.8) sepia(1) saturate(5) hue-rotate(170deg); /* Cyan tint on hover */
+}
+
+/* Focus states for better accessibility */
+.password-input-wrapper:focus-within .password-toggle-btn {
+  background-color: rgba(0, 255, 255, 0.15);
+}
+
+/* Error message text */
+.login-error {
+  color: #ff6b6b; /* Red error */
+  margin-top: 15px;
+  font-size: 0.9em;
+  background: rgba(255, 107, 107, 0.1);
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+/* Links under the form (forgot password, sign up) */
+.login-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 0.85em;
+}
+
+/* Action links styling */
+.action-link {
+  color: #00ffff; /* Cyan link */
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+/* Link hover effect */
+.action-link:hover {
+  color: #ff008a; /* Pink hover */
+  text-decoration: underline;
+}
+
+/* Login button styling */
+.login-btn {
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #00ffff, #00aaff); /* Gradient background */
+  color: #1a1a2e;
+  font-size: 1.1em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 20px;
+  box-shadow: 0 4px 15px rgba(0, 255, 255, 0.4);
+}
+
+/* Button hover effect */
+.login-btn:hover {
+  background: linear-gradient(90deg, #00aaff, #00ffff);
+  box-shadow: 0 6px 20px rgba(0, 255, 255, 0.6);
+  transform: translateY(-2px); /* Slight lift */
+}
+
+/* Button active effect */
+.login-btn:active {
+  transform: translateY(0);
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .login-card-wrapper {
+    width: 90%;
+    margin: 0 20px;
+  }
+  
+  .login-card {
+    padding: 30px 25px;
+  }
+  
+  .password-toggle-btn {
+    right: 8px;
+    padding: 5px;
+  }
+  
+  .password-toggle-icon {
+    width: 18px;
+    height: 18px;
+  }
+  
+  .password-input-wrapper input {
+    padding-right: 40px;
+  }
+}

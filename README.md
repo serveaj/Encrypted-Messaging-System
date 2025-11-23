@@ -1,70 +1,154 @@
-# Getting Started with Create React App
+# Description
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+SecureComm is a encrypted messaging web application built with **React**.
+It demonstrates authentication, protected routes, chat UI functionality, 
+and a full Dockerized development/production workflow.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## Project Setup
 
-### `npm start`
+### **1. Clone the repository**
+```bash
+git clone https://github.com/serveaj/Encrypted-Messaging-System.git
+cd Encrypted-Messaging-System
+```
+### **2. Try building the project**
+```bash
+Ctrl+Shift+B
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### **3. Install dependencies**
+```bash
+npm install
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### **4. Run locally**
+```bash
+npm start
+```
+App will be available at: **http://localhost:3000**
 
-### `npm test`
+---
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Docker Usage
 
-### `npm run build`
+```bash
+docker build --target dev -t encrypted-app-dev .
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### **Run Dev Container**
+```bash
+docker run -p 3000:3000 --name encrypted-dev-container -d encrypted-app-dev
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### **Build Production Image**
+```bash
+docker build --no-cache -t encrypted-app-prod .
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### **Run Production Container**
+```bash
+docker run -p 8080:80 --name encrypted-prod-test -d encrypted-app-prod
+```
 
-### `npm run eject`
+---
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## VS Code Tasks
+This project includes `.vscode/tasks.json` for simplified Docker workflows:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+- **Build Dev Image**
+- **Docker Build & Test Prod**
+- **Docker Start Dev & View** (Default – `Ctrl+Shift+B`)
+- **Docker Start Prod Server**
+- **Docker Start Dev (Live Reload)**
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Run tasks via: **Terminal → Run Task** in VS Code.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+---
 
-## Learn More
+## Project Structure
+```
+.
+├── .dockerignore                 # Specifies files to ignore in Docker builds
+├── .env                          # Environment variables
+├── .gitignore                    # Files to ignore in Git version control
+├── Dockerfile                    # Multi-stage Docker build configuration
+├── index.html                    # Root HTML file
+├── index.css                     # Global styling and reset
+├── package.json
+├── package-lock.json
+├── README.md
+├── src/
+│    ├── assets/
+│    │    ├── Emojis/
+│    │    │    ├── emojiData.js       # Processed emoji data for use in app
+│    │    │    └── openmoji.json      # Raw source file for OpenMoji data
+│    │    └── Logos/
+│    │         ├── hide.png             # Password visibility toggle icon
+│    │         ├── login.gif            # Login screen graphic/animation
+│    │         ├── unhide.png           # Password visibility toggle icon
+│    │         └── webLogo.jpg          # Application logo
+│    ├── data/
+│    │    ├── chats.json              # Mock conversation history
+│    │    └── users.json              # Mock user data for authentication
+│    ├── styles/
+│    │    ├── Dashboard.css           # Styling for the chat interface
+│    │    └── Login.css               # Shared styles for login/register pages
+│    ├── utils/
+│    │    ├── AuthContext.jsx         # React Context for mock authentication logic
+│    │    └── emojiProcessor.js       # Utility function for handling emoji rendering
+│    ├── App.jsx                       # Main app component with routing
+│    ├── Dashboard.jsx                 # Primary chat dashboard component
+│    ├── index.jsx                     # React application entry point
+│    ├── Login.jsx                     # Login form component
+│    └── Register.jsx                  # Registration form component
+└── .vscode/tasks.json            # VS Code tasks for Docker workflows
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+---
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Features
 
-### Code Splitting
+### **Authentication**
+- Mock login & registration via `AuthContext`
+- Session stored in **localStorage**
+- **Protected routes** (Dashboard only accessible when logged in)
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### **Chat Dashboard**
+- Sidebar with user profile and conversation list
+- Main chat area with messages
+- **Auto-scroll to latest message**
+- Mock conversations from `users.json`
 
-### Analyzing the Bundle Size
+### **Forms**
+- Login validation
+- Registration with confirm password & visibility toggle
+- Error handling + loading states
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+### **Styling**
+- Clean, responsive UI
+- Animated borders and glow effects
+- Custom styles: `Login.css` & `Dashboard.css`
 
-### Making a Progressive Web App
+### **Dockerized Environment**
+- Multi-stage Dockerfile: **dev**, **build**, **prod**
+- VS Code tasks for automated workflows
+- Dev server → `http://localhost:3000`
+- Prod server → `http://localhost:8080`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+---
 
-### Advanced Configuration
+## Authentication Notes
+- Login always succeeds in mock mode.
+- If username not found in `users.json`, a temporary in-memory user is created.
+- Session stored in `localStorage` (`token`, `user`).
+- Logout clears session.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
 
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## Future Improvements
+- Real API for authentication
+- JWT token support
+- Backend chat via WebSocket or REST
+- Stronger form validation & UI improvements
+- Unit + integration tests

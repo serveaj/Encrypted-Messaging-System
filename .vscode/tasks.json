@@ -1,0 +1,97 @@
+/**
+ * VS Code Tasks Configuration
+ * This file defines custom tasks for building and running Docker containers.
+ *
+ * Features:
+ *  - Build a development Docker image.
+ *  - Build and test a production Docker image (with no cache).
+ *  - Start a live development server with hot reload.
+ *  - Start a production server for testing.
+ *
+ * Usage:
+ *  - Press Ctrl+Shift+B to run the default "Docker Start Dev & View" task.
+ *  - Other tasks can be run manually from the VS Code task runner.
+ */
+
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // Task: Build development image
+      "label": "Build Dev Image",
+      "type": "shell",
+      "command": "docker build --target dev -t encrypted-app-dev .",
+      "problemMatcher": [],
+      "group": "none",
+      "detail": "Builds the image for development (encrypted-app-dev) by targeting the 'dev' stage."
+    },
+    {
+      // Task: Full production build and test
+      "label": "Docker Build & Test Prod",
+      "type": "shell",
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/C"]
+        }
+      },
+      // Added --no-cache to force a fresh build
+      "command": "ECHO 1. Building final optimized image... && docker build --no-cache -t encrypted-app-prod . && ECHO 2. Stopping and removing old test container... && docker stop encrypted-prod-test 2>nul && docker rm encrypted-prod-test 2>nul && ECHO 3. Starting the production test server on http://localhost:8080... && docker run -p 8080:80 --name encrypted-prod-test -d encrypted-app-prod && ECHO 4. Opening browser... && start http://localhost:8080",
+      "group": {
+        "kind": "build"
+      },
+      "problemMatcher": [],
+      "detail": "Builds the final optimized image (forcing a fresh build), starts the container, and opens the browser to http://localhost:8080."
+    },
+    {
+      // Task: Start live development server (default build task)
+      "label": "Docker Start Dev & View (Ctrl+Shift+B)",
+      "type": "shell",
+      "dependsOn": [ "Build Dev Image" ], // Ensures the dev image is fresh
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/C"]
+        }
+      },
+      "command": "ECHO 1. Stopping and removing old dev container... && docker stop encrypted-dev-container 2>nul && docker rm encrypted-dev-container 2>nul && ECHO 2. Starting live development server on http://localhost:3000... && docker run -e HOST=0.0.0.0 -e CHOKIDAR_USEPOLLING=true -e WATCHPACK_POLLING=500 -p 3000:3000 --name encrypted-dev-container -d -v ${workspaceFolder}:/app -v /app/node_modules encrypted-app-dev && ECHO 3. Waiting 5 seconds for React server to initialize... && timeout /t 5 /nobreak && ECHO 4. Opening browser... && start http://localhost:3000",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "detail": "Stops old container, starts the live-reloading container with the correct dev image (encrypted-app-dev), waits 5 seconds for server boot, and opens the browser to http://localhost:3000."
+    },
+    {
+      // Task: Start production server (without rebuild)
+      "label": "Docker Start Prod Server",
+      "type": "shell",
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/C"]
+        }
+      },
+      "command": "docker stop encrypted-prod-test 2>nul && docker rm encrypted-prod-test 2>nul && docker run -p 8080:80 --name encrypted-prod-test -d encrypted-app-prod",
+      "group": "test",
+      "problemMatcher": [],
+      "detail": "Stops old test container, starts the new production server on http://localhost:8080."
+    },
+    {
+      // Task: Start dev server (live reload, no browser auto-open)
+      "label": "Docker Start Dev (Live Reload)",
+      "type": "shell",
+      "dependsOn": [ "Build Dev Image" ],
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/C"]
+        }
+      },
+      "command": "docker stop encrypted-dev-container 2>nul && docker rm encrypted-dev-container 2>nul && docker run -e HOST=0.0.0.0 -e CHOKIDAR_USEPOLLING=true -e WATCHPACK_POLLING=500 -p 3000:3000 --name encrypted-dev-container -d -v ${workspaceFolder}:/app -v /app/node_modules encrypted-app-dev",
+      "group": "none",
+      "problemMatcher": [],
+      "detail": "Starts the live development container on http://localhost:3000 for editing."
+    }
+  ]
+}

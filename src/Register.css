@@ -1,0 +1,231 @@
+/* === Page container: full screen background and centering === */
+.register-page-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: radial-gradient(circle at 10% 20%, rgba(2,6,23,1) 0%, rgba(90,78,206,0.1) 40%, rgba(13,17,43,1) 90%),
+              radial-gradient(circle at 90% 80%, rgba(2,6,23,1) 0%, rgba(255,0,150,0.1) 40%, rgba(13,17,43,1) 90%);
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+/* === Card wrapper: sets card size and glow animation === */
+.register-card-wrapper {
+  position: relative;
+  width: 320px;
+  padding: 2px;
+  border-radius: 12px;
+  overflow: hidden;
+  animation: glow-pulse 2s infinite alternate ease-in-out;
+}
+
+/* === Card: main box that holds content === */
+.register-card {
+  background-color: #2a2a3e;
+  padding: 25px;
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+
+/* === Title text === */
+.register-title {
+  font-size: 1.6em;
+  margin-bottom: 20px;
+  color: #fff;
+}
+
+/* === Form layout === */
+.register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* === Input group === */
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.input-group label {
+  font-size: 0.85em;
+  color: #ccc;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background-color: #33334f;
+  color: #e0e0e0;
+  font-size: 0.9em;
+  box-sizing: border-box;
+}
+
+.input-group input:focus {
+  border-color: #00ffff;
+  box-shadow: 0 0 6px rgba(0,255,255,0.5);
+}
+
+/* === Input with icon (password field) === */
+.input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-with-icon input {
+  width: 100%;
+  padding: 8px 10px;
+  padding-right: 40px; /* space for toggle */
+  border: 1px solid #444;
+  border-radius: 6px;
+  background-color: #33334f;
+  color: #e0e0e0;
+  font-size: 0.9em;
+  box-sizing: border-box;
+}
+
+/* Hide browser default password reveal icons */
+.input-with-icon input::-ms-reveal,
+.input-with-icon input::-ms-clear {
+  display: none;
+}
+
+.input-with-icon input::-webkit-credentials-auto-fill-button,
+.input-with-icon input::-webkit-clear-button,
+.input-with-icon input::-webkit-inner-spin-button,
+.input-with-icon input::-webkit-textfield-decoration-container {
+  display: none;
+}
+
+/* === Password toggle button === */
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.password-toggle:hover {
+  background-color: rgba(0, 255, 255, 0.1);
+}
+
+.password-toggle:active {
+  background-color: rgba(0, 255, 255, 0.2);
+  transform: translateY(-50%) scale(0.95);
+}
+
+.password-toggle img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  opacity: 0.7;
+  transition: all 0.3s ease;
+  filter: brightness(0) invert(1); /* white icons */
+}
+
+.password-toggle:hover img {
+  opacity: 1;
+  filter: brightness(0) invert(0.8) sepia(1) saturate(5) hue-rotate(170deg); /* cyan tint */
+}
+
+/* === Error message === */
+.register-error {
+  color: #ff6b6b;
+  font-size: 0.85em;
+  margin-bottom: 10px;
+}
+
+/* === Submit button === */
+.register-btn {
+  padding: 10px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #00ffff, #00aaff);
+  color: #1a1a2e;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: transform 0.2s ease;
+}
+
+.register-btn:hover {
+  background: linear-gradient(90deg, #00aaff, #00ffff);
+  transform: translateY(-1px);
+}
+
+/* === Footer text === */
+.register-card p {
+  font-size: 0.8em;
+  margin-top: 12px;
+  color: #ccc;
+}
+
+/* === Glow animation === */
+@keyframes glow-pulse {
+  0%   { box-shadow: 0 0 10px rgba(0,255,255,0.15); }
+  100% { box-shadow: 0 0 12px rgba(255,0,138,0.15); }
+}
+
+/* === Footer link styling === */
+.register-footer {
+  font-size: 0.85em;
+  margin-top: 15px;
+  color: #ccc;
+}
+
+.register-footer a {
+  color: #00ffff;
+  font-weight: bold;
+  text-decoration: none;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.register-footer a:hover {
+  color: #00aaff;
+  text-shadow: 0 0 6px rgba(0,255,255,0.6);
+}
+
+/* === Responsive tweaks === */
+@media (max-width: 480px) {
+  .register-card-wrapper {
+    width: 90%;
+    margin: 0 20px;
+  }
+
+  .register-card {
+    padding: 20px;
+  }
+
+  .password-toggle {
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    padding: 4px;
+  }
+
+  .password-toggle img {
+    width: 16px;
+    height: 16px;
+  }
+
+  .input-with-icon input {
+    padding-right: 36px;
+  }
+}
