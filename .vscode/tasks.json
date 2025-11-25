@@ -1,6 +1,7 @@
 /**
  * VS Code Tasks Configuration
  * This file defines custom tasks for building and running Docker containers.
+ * Feel free to update the code as you like with new ideas.
  *
  * Features:
  *  - Build a development Docker image.
@@ -10,87 +11,139 @@
  *
  * Usage:
  *  - Press Ctrl+Shift+B to run the default "Docker Start Dev & View" task.
- *  - Other tasks can be run manually from the VS Code task runner.
+ *  - Other tasks can be run manually from the VS Code task runner if you want.
  */
 
 {
   "version": "2.0.0",
   "tasks": [
-    // Build the Development Image
+    // Build the development image
     {
       // Task Development ( Just Writing Bcz It Was Giving Space Error)
       "label": "Build Dev Image",
       "type": "shell",
       "command": "docker build --target dev -t encrypted-app-dev .",
       "group": { "kind": "build", "isDefault": false },
-      "detail": "STEP 1: Builds the encrypted-app-dev image."
+      "detail": "STEP 1: Builds the encrypted-app-dev image (includes Node.js and npm)."
     },
 
-    // Robust Container Cleanup (Cross-Platform. Not Sure If It's Going To Work or Not)
+    // Cleanup and wait(10s pause to ensure that everything is good. you can change as you like) 
     {
-      "label": "Docker Cleanup Dev Container",
+      "label": "Docker Cleanup & Wait (10s)",
       "type": "shell",
-      // Default for Linux/macOS (bash/zsh)
-      "command": "docker rm -f encrypted-dev-container >/dev/null 2>&1 || true",
-      "options": {
-        "shell": { "executable": "bash" }
-      },
+      "command": "docker rm -f encrypted-dev-container >/dev/null 2>&1 || true && sleep 10",
       "windows": {
-        // Windows PowerShell equivalent
-        "command": "docker rm -f encrypted-dev-container 2>$null; exit 0",
-        "options": {
-          "shell": { "executable": "powershell" }
-        }
+        "command": "docker rm -f encrypted-dev-container 2>$null; Start-Sleep -Seconds 10",
+        "options": { "shell": { "executable": "powershell" } }
       },
-      "detail": "STEP 2: Removes the old container if it exists, ignores errors if not."
+      "osx": { "command": "docker rm -f encrypted-dev-container >/dev/null 2>&1 || true && sleep 10" },
+      "linux": { "command": "docker rm -f encrypted-dev-container >/dev/null 2>&1 || true && sleep 10" },
+      "detail": "STEP 2: Removes the dev container if it exists, then pauses for 10s to ensure Docker releases the name."
     },
-
-    // Wait 10 Seconds Post Cleanup
-    {
-      "label": "Wait 10s Post Cleanup",
-      "type": "shell",
-      "command": "timeout /t 10 /nobreak",
-      "detail": "STEP 3: Pauses 10s to ensure Docker releases the container name."
-    },
-
-    // Run the Dev Server Container
+    
+    // Start the live dev server
     {
       "label": "Docker Run Dev Server",
       "type": "shell",
       "command": "docker run -e HOST=0.0.0.0 -e CHOKIDAR_USEPOLLING=true -e WATCHPACK_POLLING=500 -p 3000:3000 --name encrypted-dev-container -d -v ${workspaceFolder}:/app -v /app/node_modules encrypted-app-dev",
-      "detail": "STEP 4: Starts the new container with live reloading."
+      "detail": "STEP 3: Starts the new dev container with live reloading (npm start runs inside Docker)."
     },
-
-    // Wait 5 Seconds for Server Startup
+    
+    // Wait 5 secind for server startup (Delayed for safe boot)
     {
       "label": "Wait 5 Seconds for Server Startup",
       "type": "shell",
-      "command": "timeout /t 5 /nobreak",
-      "detail": "STEP 5: Pauses 5s to allow the server inside the container to initialize."
+      "command": "sleep 5",
+      "windows": { "command": "timeout /t 5 /nobreak" },
+      "osx": { "command": "sleep 5" },
+      "linux": { "command": "sleep 5" },
+      "detail": "STEP 4: Pauses 5s to allow the React server inside the container to initialize."
     },
 
-    // Open Browser
+    // Open browser
     {
       "label": "Open Browser",
       "type": "shell",
-      "command": "explorer http://localhost:3000",
-      "detail": "STEP 6: Opens the application in the browser."
+      "command": "xdg-open http://localhost:3000",
+      "windows": { "command": "explorer http://localhost:3000" },
+      "osx": { "command": "open http://localhost:3000" },
+      "linux": { "command": "xdg-open http://localhost:3000" },
+      "detail": "STEP 5: Opens the development app in the default browser."
     },
 
-    // Composite Task (Ctrl+Shift+B)
+    // Main dev run (default build task. for me I say build and run)
     {
       "label": "Docker Start Dev & View (Ctrl+Shift+B)",
       "dependsOn": [
-        "Build Dev Image",
-        "Docker Cleanup Dev Container",
-        "Wait 10s Post-Cleanup",
+        "Build Dev Image", 
+        "Docker Cleanup & Wait (10s)", 
         "Docker Run Dev Server",
-        "Wait 5 Seconds for Server Startup",
+        "Wait 5 Seconds for Server Startup",          
         "Open Browser"
       ],
-      "dependsOrder": "sequence",   // Ensures tasks run one after another (There is Time Delay Because This is The Best Way I Found For Now To Fix The Container Error)
+
+      // This part of code makes sure that the task/command are run one after another so that there will not be any conflict or error.
+      "dependsOrder": "sequence",
       "group": { "kind": "build", "isDefault": true },
-      "detail": "Executes all steps sequentially: Build -> Cleanup -> Wait -> Run -> Wait -> Open Browser.",
+      "detail": "Executes all steps sequentially: Build -> Cleanup/Wait -> Run -> Wait -> Open Browser.",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    
+    // Build the prod image
+    {
+      "label": "Build Prod Image",
+      "type": "shell",
+      "command": "docker build --no-cache -t encrypted-app-prod .",
+      "detail": "STEP 6: Builds the encrypted-app-prod image (optimized static build served by Nginx)."
+    },
+
+    // Clean old prod container so that when rebuilding it does not give error.
+    {
+      "label": "Docker Cleanup Prod Container",
+      "type": "shell",
+      "command": "docker rm -f encrypted-prod-test >/dev/null 2>&1 || true",
+      "windows": { "command": "docker rm -f encrypted-prod-test 2>$null; exit 0" },
+      "osx": { "command": "docker rm -f encrypted-prod-test >/dev/null 2>&1 || true" },
+      "linux": { "command": "docker rm -f encrypted-prod-test >/dev/null 2>&1 || true" },
+      "detail": "STEP 7: Removes any old production container if it exists."
+    },
+
+    // Run the prod server
+    {
+      "label": "Docker Run Prod Server",
+      "type": "shell",
+      "command": "docker run -p 8080:80 --name encrypted-prod-test -d encrypted-app-prod",
+      "detail": "STEP 8: Starts the production container with Nginx serving the React build on port 8080."
+    },
+
+    // Open prod browser
+    {
+      "label": "Open Browser Prod",
+      "type": "shell",
+      "command": "xdg-open http://localhost:8080",
+      "windows": { "command": "explorer http://localhost:8080" },
+      "osx": { "command": "open http://localhost:8080" },
+      "linux": { "command": "xdg-open http://localhost:8080" },
+      "detail": "STEP 9: Opens the production app in the default browser."
+    },
+
+    // Main prod run
+    {
+      "label": "Docker Build & Test Prod",
+      "dependsOn": [
+        "Build Prod Image",
+        "Docker Cleanup Prod Container",
+        "Docker Run Prod Server",
+        "Open Browser Prod"
+      ],
+
+    // This part of code makes sure that the task/command are run one after another so that there will not be any conflict or error.
+      "dependsOrder": "sequence",
+      "detail": "Executes all steps sequentially: Build -> Cleanup -> Run -> Open Browser.",
       "presentation": {
         "reveal": "always",
         "panel": "shared",
