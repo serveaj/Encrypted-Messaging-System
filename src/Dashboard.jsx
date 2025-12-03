@@ -18,6 +18,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './utils/AuthContext';
 import './Dashboard.css';
 import mockUsers from './data/users.json'; // Fake users for testing
+import emojis from './assets/Emojis/openmoji.json'; // For emojis
 
 const Dashboard = () => {
   const { user, logout } = useAuth(); // Current logged-in user + logout function
@@ -28,6 +29,45 @@ const Dashboard = () => {
   const [newMessage, setNewMessage] = useState('');   // Text typed in input box
 
   const messagesEndRef = useRef(null); // Reference for auto-scrolling
+
+  // Handels emojis
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false); // Emoji set
+  const [emojiSearch, setEmojiSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState('smileys-emotion');
+
+
+
+  // for emojis
+  const filteredEmojis = emojis
+    .filter(e => e.group?.includes(activeCategory)) // match category
+    .filter(e => e.annotation?.toLowerCase().includes(emojiSearch.toLowerCase()) 
+            || e.tags?.toLowerCase().includes(emojiSearch.toLowerCase()));
+
+  // emojis categories
+  const emojiCategories = [
+    { icon: "😆", group: "smileys-emotion" },
+    { icon: "🐶", group: "animals-nature" },
+    { icon: "⚽️", group: "activities" },
+    { icon: "🌍️", group: "travel-places" },
+    { icon: "👓️", group: "objects" },
+    { icon: "🚻", group: "symbols" },
+    { icon: "🏴‍☠️", group: "flags" }
+  ];
+
+  // Emoji menu effets. close when clicked outside of emoji menu box
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const picker = document.querySelector('.emoji-picker');
+      const emojiBtn = document.querySelector('.emoji-btn');
+      if (picker && !picker.contains(event.target) && !emojiBtn.contains(event.target)) {
+        setShowEmojiPicker(false);
+      }
+    };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+  }, []);
 
   // Scrolls the chat window to the bottom
   const scrollToBottom = () => {
@@ -197,6 +237,42 @@ const Dashboard = () => {
               <div style={{ height: '1px' }} /> 
             </div>
 
+            {/* Emoji picker*/}
+            {showEmojiPicker && (
+              <div className="emoji-picker">
+                {/* Search bar */}
+                <input
+                  type="text"
+                  className="emoji-search"
+                  placeholder="Search emojis..."
+                  value={emojiSearch}
+                  onChange={(e) => setEmojiSearch(e.target.value)}
+                />
+
+                {/* Category tabs */}
+                <div className="emoji-categories">
+                  {emojiCategories.map(cat => (
+                    <button
+                      key={cat.group}
+                      className={`emoji-category ${activeCategory === cat.group ? 'active' : ''}`}
+                      onClick={() => setActiveCategory(cat.group)} > {cat.icon}
+                    </button>
+                ))}
+              </div>
+
+              {/* Emoji grid */}
+              <div className="emoji-grid">
+                {filteredEmojis.map((emoji, index) => (
+                  <span key={index} onClick={() => {
+                    setNewMessage(newMessage + emoji.emoji);
+                  }}> 
+                    {emoji.emoji}
+                  </span>
+                ))}
+              </div>
+            </div>
+            )}
+
             {/* Input box for new messages */}
             <div className="message-input">
               <input
@@ -206,6 +282,10 @@ const Dashboard = () => {
                 onKeyPress={handleKeyPress}
                 placeholder="Type a message..."
               />
+              {/* Emoji input */}
+              <button className="emoji-btn" onClick={()=> setShowEmojiPicker(!showEmojiPicker)}>
+              😊
+              </button>
               <button className="send-btn" onClick={handleSendMessage}>
                 Send
               </button>
