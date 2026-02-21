@@ -126,6 +126,7 @@ const Dashboard = () => {
                   : `Last message from ${mockUser.name}.`,
           lastMessageTime: '12:00 PM',
           unreadCount: index === 0 ? 1 : 0, 
+          members: [user.name, mockUser.name],
           messages: [ 
             { id: 1, content: `Hello ${user.name}`, type: 'received', time: '11:58 AM' },
             { id: 2, content: "This is a mock conversation for UI testing.", type: 'received', time: '11:59 AM' }
@@ -135,7 +136,8 @@ const Dashboard = () => {
       setChats(mockChatList); // Save chats
 
       if (mockChatList.length > 0) {
-        setActiveChat(mockChatList[0]); // Open first chat by default
+        setActiveChat({ ...mockChatList[0], unreadCount: 0 }); // Open first chat by default and mark read
+        setChats(prev => prev.map(c => c.id === mockChatList[0].id ? { ...c, unreadCount: 0 } : c));
       }
     };
 
@@ -147,6 +149,13 @@ const Dashboard = () => {
   // Auto-scroll when activeChat changes
   useEffect(() => {
     scrollToBottom();
+    if (activeChat) {
+      setChats(prev =>
+        prev.map(c =>
+          c.id === activeChat.id ? { ...c, unreadCount: 0 } : c
+        )
+      );
+    }
   }, [activeChat]);
 
   // Send a new message
@@ -173,12 +182,11 @@ const Dashboard = () => {
 
     setActiveChat(updatedChat);
 
-    // Update chats list
-    setChats(prevChats => 
-      prevChats.map(chat => 
-        chat.id === activeChat.id ? updatedChat : chat
-      )
-    );
+    // Update chats list and move conversation to top
+    setChats(prevChats => {
+      const others = prevChats.filter(chat => chat.id !== activeChat.id);
+      return [updatedChat, ...others];
+    });
 
     setNewMessage(''); // Clear input box
     // Keep object URL alive so download works; reset picker state only.
@@ -267,6 +275,21 @@ const Dashboard = () => {
     );
   };
 
+  const handleSelectChat = (chatId) => {
+    setChats(prev => {
+      const updated = prev.map(c =>
+        c.id === chatId ? { ...c, unreadCount: 0 } : c
+      );
+      const selected = updated.find(c => c.id === chatId);
+      setActiveChat(selected || null);
+      return updated;
+    });
+    setSidebarOpen(false);
+  };
+
+  const directChats = chats.filter(c => (c.members?.length || 2) <= 2);
+  const groupChats = chats.filter(c => (c.members?.length || 1) > 2);
+
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark' : ''}`}>
       {/* Sidebar with user info and chat list */}
@@ -317,11 +340,11 @@ const Dashboard = () => {
             </div>
           </div>
           
-          {chats.map(chat => (
+          {directChats.map(chat => (
             <div
               key={chat.id}
               className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
-              onClick={() => { setActiveChat(chat); setSidebarOpen(false); }}
+              onClick={() => handleSelectChat(chat.id)}
             >
               <div className="chat-avatar">{chat.avatar}</div>
               <div className="chat-info">
@@ -336,6 +359,31 @@ const Dashboard = () => {
               </div>
             </div>
           ))}
+
+          {groupChats.length > 0 && (
+            <>
+              <div className="chats-subheader">Group Conversations</div>
+              {groupChats.map(chat => (
+                <div
+                  key={chat.id}
+                  className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
+                  onClick={() => handleSelectChat(chat.id)}
+                >
+                  <div className="chat-avatar">{chat.avatar}</div>
+                  <div className="chat-info">
+                    <div className="chat-name">{chat.name}</div>
+                    <div className="chat-preview">{chat.lastMessage}</div>
+                  </div>
+                  <div className="chat-meta">
+                    <div className="chat-time">{chat.lastMessageTime}</div>
+                    {chat.unreadCount > 0 && (
+                      <div className="unread-count">{chat.unreadCount}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -379,12 +427,15 @@ const Dashboard = () => {
             {/* Messages list */}
             <div className="messages-container" ref={messagesEndRef}> 
               {activeChat.messages.map(message => (
-                <div key={message.id} className={`message ${message.type}`}>
+                <div
+                  key={message.id}
+                  className={`message ${message.type}`}
+                >
                   {message.content}
-              {message.fileName && (
-                <div className="message-file">
-                  📎
-                  {message.fileUrl ? (
+                  {message.fileName && (
+                    <div className="message-file">
+                      📎
+                      {message.fileUrl ? (
                     message.fileType && message.fileType.startsWith('image') ? (
                       <a href={message.fileUrl} target="_blank" rel="noreferrer">
                         <img src={message.fileUrl} alt={message.fileName} className="message-image" />
