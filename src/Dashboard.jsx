@@ -24,17 +24,29 @@ const Dashboard = () => {
   const { user, logout } = useAuth(); // Current logged-in user + logout function
 
   // State variables for chat handling
-  const [chats, setChats] = useState([]);          // List of all conversations
-  const [activeChat, setActiveChat] = useState(null); // The chat currently open
-  const [newMessage, setNewMessage] = useState('');   // Text typed in input box
+  const [chats, setChats] = useState([]);               // List of all conversations
+  const [activeChat, setActiveChat] = useState(null);   // The chat currently open
+  const [newMessage, setNewMessage] = useState('');     // Text typed in input box
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile drawer state
 
   const messagesEndRef = useRef(null); // Reference for auto-scrolling
+  const nextIdRef = useRef(Date.now()); // simple id source for new chats
 
   // Handels emojis
   const [showEmojiPicker, setShowEmojiPicker] = useState(false); // Emoji set
   const [emojiSearch, setEmojiSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('smileys-emotion');
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [groupSelection, setGroupSelection] = useState([]);
+  const [groupName, setGroupName] = useState('');
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [displayName, setDisplayName] = useState(user?.name || '');
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [attachedFile, setAttachedFile] = useState(null); // { name, url, type }
 
+  const settingsMenuRef = useRef(null);
+  const fileInputRef = useRef(null);
 
 
   // for emojis
@@ -69,6 +81,22 @@ const Dashboard = () => {
       };
   }, []);
 
+  // Sync display name when user changes
+  useEffect(() => {
+    setDisplayName(user?.name || '');
+  }, [user]);
+
+  // Close settings dropdown when clicking outside
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(e.target)) {
+        setShowSettingsMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
   // Scrolls the chat window to the bottom
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
@@ -98,6 +126,7 @@ const Dashboard = () => {
                   : `Last message from ${mockUser.name}.`,
           lastMessageTime: '12:00 PM',
           unreadCount: index === 0 ? 1 : 0, 
+          members: [user.name, mockUser.name],
           messages: [ 
             { id: 1, content: `Hello ${user.name}`, type: 'received', time: '11:58 AM' },
             { id: 2, content: "This is a mock conversation for UI testing.", type: 'received', time: '11:59 AM' }
@@ -107,7 +136,8 @@ const Dashboard = () => {
       setChats(mockChatList); // Save chats
 
       if (mockChatList.length > 0) {
-        setActiveChat(mockChatList[0]); // Open first chat by default
+        setActiveChat({ ...mockChatList[0], unreadCount: 0 }); // Open first chat by default and mark read
+        setChats(prev => prev.map(c => c.id === mockChatList[0].id ? { ...c, unreadCount: 0 } : c));
       }
     };
 
@@ -119,15 +149,25 @@ const Dashboard = () => {
   // Auto-scroll when activeChat changes
   useEffect(() => {
     scrollToBottom();
+    if (activeChat) {
+      setChats(prev =>
+        prev.map(c =>
+          c.id === activeChat.id ? { ...c, unreadCount: 0 } : c
+        )
+      );
+    }
   }, [activeChat]);
 
   // Send a new message
   const handleSendMessage = () => {
-    if (!newMessage.trim() || !activeChat) return;
+    if ((!newMessage.trim() && !attachedFile) || !activeChat) return;
 
     const message = {
       id: Date.now(),
-      content: newMessage,
+      content: newMessage || (attachedFile ? attachedFile.name : ''),
+      fileName: attachedFile?.name || null,
+      fileUrl: attachedFile?.url || null,
+      fileType: attachedFile?.type || null,
       type: 'sent',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
@@ -142,14 +182,16 @@ const Dashboard = () => {
 
     setActiveChat(updatedChat);
 
-    // Update chats list
-    setChats(prevChats => 
-      prevChats.map(chat => 
-        chat.id === activeChat.id ? updatedChat : chat
-      )
-    );
+    // Update chats list and move conversation to top
+    setChats(prevChats => {
+      const others = prevChats.filter(chat => chat.id !== activeChat.id);
+      return [updatedChat, ...others];
+    });
 
     setNewMessage(''); // Clear input box
+    // Keep object URL alive so download works; reset picker state only.
+    setAttachedFile(null); // Clear file tag
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // Send message when pressing Enter
@@ -159,10 +201,99 @@ const Dashboard = () => {
     }
   };
 
+  const createChatShell = (name, members) => {
+    nextIdRef.current += 1;
+    return {
+      id: nextIdRef.current,
+      name,
+      avatar: name
+        .split(' ')
+        .map(word => word[0]?.toUpperCase() || '')
+        .join('')
+        .slice(0, 3),
+      status: `${members.length} member${members.length === 1 ? '' : 's'}`,
+      lastMessage: 'New conversation started',
+      lastMessageTime: 'Just now',
+      unreadCount: 0,
+      messages: [
+        { id: `${nextIdRef.current}-seed`, content: 'Say hello to everyone!', type: 'received', time: 'Now' }
+      ],
+      members
+    };
+  };
+
+  const handleNewChat = () => {
+    const name = prompt('Who do you want to chat with?');
+    if (!name || !name.trim()) return;
+    const newChat = createChatShell(name.trim(), [user?.name || 'You', name.trim()]);
+    setChats(prev => [newChat, ...prev]);
+    setActiveChat(newChat);
+    setSidebarOpen(false);
+  };
+
+  const handleFileButton = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setAttachedFile(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setAttachedFile({ name: file.name, url, type: file.type });
+  };
+
+  const handleAddFriend = () => {
+    const name = prompt('Enter the friend name to add:');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    const newChat = createChatShell(trimmed, [user?.name || 'You', trimmed]);
+    setChats(prev => [newChat, ...prev]);
+    setActiveChat(newChat);
+    setSidebarOpen(false);
+  };
+
+  const handleCreateGroupFromSelection = () => {
+    const selectedUsers = mockUsers.filter(u => groupSelection.includes(u.id));
+    const uniqueMembers = Array.from(new Set([user?.name || 'You', ...selectedUsers.map(u => u.name)]));
+    if (uniqueMembers.length < 3) return;
+    const name = groupName.trim() || `Group (${uniqueMembers.length - 1})`;
+    const newChat = createChatShell(name, uniqueMembers);
+    setChats(prev => [newChat, ...prev]);
+    setActiveChat(newChat);
+    setSidebarOpen(false);
+    setShowGroupModal(false);
+    setGroupSelection([]);
+    setGroupName('');
+  };
+
+  const toggleGroupMember = (id) => {
+    setGroupSelection(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectChat = (chatId) => {
+    setChats(prev => {
+      const updated = prev.map(c =>
+        c.id === chatId ? { ...c, unreadCount: 0 } : c
+      );
+      const selected = updated.find(c => c.id === chatId);
+      setActiveChat(selected || null);
+      return updated;
+    });
+    setSidebarOpen(false);
+  };
+
+  const directChats = chats.filter(c => (c.members?.length || 2) <= 2);
+  const groupChats = chats.filter(c => (c.members?.length || 1) > 2);
+
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container ${isDarkMode ? 'dark' : ''}`}>
       {/* Sidebar with user info and chat list */}
-      <div className="sidebar">
+      <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="user-info">
             {/* User avatar with fallback if image fails */}
@@ -176,27 +307,44 @@ const Dashboard = () => {
               }} 
             />
             <div className="user-details">
-              <h3>{user?.name}</h3>
+              <h3>{displayName || user?.name}</h3>
               <span className="user-status">Online</span>
             </div>
           </div>
-          <button className="logout-btn" onClick={logout}>
-            Logout
-          </button>
+          <div className="settings-wrap" ref={settingsMenuRef}>
+            <button
+              className="settings-btn"
+              aria-haspopup="true"
+              aria-expanded={showSettingsMenu}
+              onClick={() => setShowSettingsMenu(prev => !prev)}
+            >
+              ⋮
+            </button>
+            {showSettingsMenu && (
+              <div className="settings-dropdown">
+                <button onClick={() => { setShowSettingsMenu(false); setShowSettingsModal(true); }}>Settings</button>
+                <button onClick={() => { setShowSettingsMenu(false); handleAddFriend(); }}>Add Friend</button>
+                <button className="dropdown-logout" onClick={() => { setShowSettingsMenu(false); logout(); }}>Logout</button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* List of chats */}
         <div className="chats-list">
           <div className="chats-header">
             <h3>Conversations</h3>
-            <button className="new-chat-btn">+ New Chat</button>
+            <div className="chat-actions-compact">
+              <button className="new-chat-btn" onClick={handleNewChat}>+ New</button>
+              <button className="group-chat-btn" onClick={() => { setShowGroupModal(true); setGroupSelection([]); }}>+ Group</button>
+            </div>
           </div>
           
-          {chats.map(chat => (
+          {directChats.map(chat => (
             <div
               key={chat.id}
               className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
-              onClick={() => setActiveChat(chat)}
+              onClick={() => handleSelectChat(chat.id)}
             >
               <div className="chat-avatar">{chat.avatar}</div>
               <div className="chat-info">
@@ -211,7 +359,50 @@ const Dashboard = () => {
               </div>
             </div>
           ))}
+
+          {groupChats.length > 0 && (
+            <>
+              <div className="chats-subheader">Group Conversations</div>
+              {groupChats.map(chat => (
+                <div
+                  key={chat.id}
+                  className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
+                  onClick={() => handleSelectChat(chat.id)}
+                >
+                  <div className="chat-avatar">{chat.avatar}</div>
+                  <div className="chat-info">
+                    <div className="chat-name">{chat.name}</div>
+                    <div className="chat-preview">{chat.lastMessage}</div>
+                  </div>
+                  <div className="chat-meta">
+                    <div className="chat-time">{chat.lastMessageTime}</div>
+                    {chat.unreadCount > 0 && (
+                      <div className="unread-count">{chat.unreadCount}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
+      </div>
+
+      {/* Compact nav shown when the full sidebar is hidden on small screens */}
+      <div className={`mini-nav ${sidebarOpen ? 'hidden' : ''}`}>
+        <button
+          className="mini-nav-btn"
+          aria-label="Open conversations list"
+          onClick={() => setSidebarOpen(true)}
+        >
+          💬
+        </button>
+        <button
+          className="mini-nav-btn"
+          aria-label="Start new chat"
+          onClick={() => setSidebarOpen(true)}
+        >
+          ＋
+        </button>
       </div>
 
       {/* Main chat area */}
@@ -219,6 +410,13 @@ const Dashboard = () => {
         {activeChat ? (
           <div className="chat-area">
             <div className="chat-header">
+              <button
+                className="sidebar-toggle"
+                aria-label="Toggle chat list"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+              >
+                Chats
+              </button>
               <div className="chat-avatar">{activeChat.avatar}</div>
               <div className="chat-info">
                 <div className="chat-name">{activeChat.name}</div>
@@ -229,8 +427,29 @@ const Dashboard = () => {
             {/* Messages list */}
             <div className="messages-container" ref={messagesEndRef}> 
               {activeChat.messages.map(message => (
-                <div key={message.id} className={`message ${message.type}`}>
+                <div
+                  key={message.id}
+                  className={`message ${message.type}`}
+                >
                   {message.content}
+                  {message.fileName && (
+                    <div className="message-file">
+                      📎
+                      {message.fileUrl ? (
+                    message.fileType && message.fileType.startsWith('image') ? (
+                      <a href={message.fileUrl} target="_blank" rel="noreferrer">
+                        <img src={message.fileUrl} alt={message.fileName} className="message-image" />
+                      </a>
+                    ) : (
+                      <a href={message.fileUrl} download={message.fileName} target="_blank" rel="noreferrer">
+                        {message.fileName}
+                      </a>
+                    )
+                  ) : (
+                    <span>{message.fileName}</span>
+                  )}
+                </div>
+              )}
                   <div className="message-time">{message.time}</div>
                 </div>
               ))}
@@ -286,6 +505,18 @@ const Dashboard = () => {
               <button className="emoji-btn" onClick={()=> setShowEmojiPicker(!showEmojiPicker)}>
               😊
               </button>
+              <button className="file-btn" onClick={handleFileButton} aria-label="Add file">
+                📎
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
+              {attachedFile && (
+                <span className="file-tag" title={attachedFile.name}>{attachedFile.name}</span>
+              )}
               <button className="send-btn" onClick={handleSendMessage}>
                 Send
               </button>
@@ -299,6 +530,100 @@ const Dashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Mobile overlay for sidebar drawer */}
+      {sidebarOpen && <div className="backdrop" onClick={() => setSidebarOpen(false)} />}
+
+      {/* Settings modal */}
+      {showSettingsModal && (
+        <>
+          <div className="modal-backdrop" onClick={() => setShowSettingsModal(false)} />
+          <div className="settings-modal" role="dialog" aria-modal="true">
+            <div className="settings-modal__header">
+              <h4>Settings</h4>
+              <button className="modal-close" onClick={() => setShowSettingsModal(false)} aria-label="Close settings modal">×</button>
+            </div>
+
+            <div className="settings-modal__body">
+              <label className="settings-field">
+                <span>Display name</span>
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Your name"
+                />
+              </label>
+
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={isDarkMode}
+                  onChange={(e) => setIsDarkMode(e.target.checked)}
+                />
+                <span>Dark mode</span>
+              </label>
+            </div>
+
+            <div className="settings-modal__footer">
+              <button className="ghost-btn" onClick={() => setShowSettingsModal(false)}>Close</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Group creation modal */}
+      {showGroupModal && (
+        <>
+          <div className="modal-backdrop" onClick={() => setShowGroupModal(false)} />
+          <div className="group-modal" role="dialog" aria-modal="true">
+            <div className="group-modal__header">
+              <h4>Create Group</h4>
+              <button className="modal-close" onClick={() => setShowGroupModal(false)} aria-label="Close group modal">×</button>
+            </div>
+
+            <label className="group-modal__field">
+              <span>Group name (optional)</span>
+              <input
+                type="text"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                placeholder="e.g., Project Alpha"
+              />
+            </label>
+
+            <div className="group-modal__list">
+              {mockUsers
+                .filter(u => u.username !== user?.username) // exclude self if present
+                .map(u => (
+                  <label key={u.id} className="group-row">
+                    <input
+                      type="checkbox"
+                      checked={groupSelection.includes(u.id)}
+                      onChange={() => toggleGroupMember(u.id)}
+                    />
+                    <div className="group-row__avatar">{u.avatar || u.name[0]}</div>
+                    <div className="group-row__info">
+                      <div className="group-row__name">{u.name}</div>
+                      <div className="group-row__status">{u.status || 'offline'}</div>
+                    </div>
+                  </label>
+                ))}
+            </div>
+
+            <div className="group-modal__footer">
+              <span>{groupSelection.length} selected</span>
+              <button
+                className="group-create-btn"
+                disabled={groupSelection.length < 2}
+                onClick={handleCreateGroupFromSelection}
+              >
+                Create group
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
