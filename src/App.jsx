@@ -13,8 +13,9 @@
  */
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './utils/AuthContext';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './utils/AuthContext';
+import Landing from './Landing';
 import Login from './Login';
 import Register from './Register';
 import Dashboard from './Dashboard';
@@ -22,16 +23,19 @@ import './index.css';
 
 // ProtectedRoute checks if user is logged in before showing a page
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth(); // Get login status
+  const { isAuthenticated, loading } = useAuth(); // Get login status and loading state
+  if (loading) return null; // Show nothing while checking localStorage
   return isAuthenticated ? children : <Navigate to="/login" />; // Redirect if not logged in
 };
 
 // AppContent holds all the routes
-const AppContent = () => {
+const App = () => {
   return (
-    <Router>
       <div className="App">
         <Routes>
+          {/* Landing page */}
+          <Route path="/" element={<Landing />} />
+
           {/* Login page */}
           <Route path="/login" element={<Login />} />
 
@@ -49,19 +53,9 @@ const AppContent = () => {
           />
 
           {/* Default route redirects to dashboard */}
-          <Route path="/" element={<Navigate to="/dashboard" />} />
+          <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>
-    </Router>
-  );
-};
-
-// App wraps everything with AuthProvider so authentication works everywhere
-const App = () => {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
   );
 };
 

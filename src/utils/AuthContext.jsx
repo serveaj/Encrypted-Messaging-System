@@ -14,6 +14,7 @@
 
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import mockUsers from '../data/users.json'; // Fake user data for testing
+import { useNavigate } from 'react-router-dom'; // For navigation after login/logout
 
 // Create the authentication context
 const AuthContext = createContext();
@@ -33,6 +34,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);           // Current logged-in user
   const [isAuthenticated, setIsAuthenticated] = useState(false); // Login status
   const [loading, setLoading] = useState(true);     // Loading state while checking localStorage
+  const navigate = useNavigate(); // For programmatic navigation after login/logout
 
   // Check localStorage for saved session on first load
   useEffect(() => {
@@ -75,6 +77,7 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(true);
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(userToStore));
+    navigate('/dashboard'); // Redirect to dashboard after login
     
     return { success: true, message: 'Login successful' };
   };
@@ -88,6 +91,7 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    navigate('/'); // Redirect to landing page after logout
   };
 
   // Value provided to all components

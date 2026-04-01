@@ -145,6 +145,12 @@ Run tasks via: **Terminal → Run Task** in VS Code.
 - Session stored in `localStorage` (`token`, `user`).
 - Logout clears session.
 
+## New Updae
+- Add Landing page / Home Page
+- Auto-Expanding Chat Input
+- Separate Navigation for DMs and Groups
+- Fix Responsive Layout Issues
+- Define “+ New” Button Functionality
 
 ## Future Improvements
 - Real API for authentication
