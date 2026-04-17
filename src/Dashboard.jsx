@@ -653,15 +653,9 @@ const Dashboard = () => {
         <div className="sidebar-header">
           <div className="user-info">
             {/* User avatar with fallback if image fails */}
-            <img
-              src={user?.avatar}
-              alt={user?.name}
-              className="user-avatar"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=4CAF50&color=fff`
-              }}
-            />
+            <div className="user-avatar">
+              {user?.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
+            </div>
             <div className="user-details">
               <h3>{displayName || user?.name}</h3>
               <span className="user-status">Online</span>
@@ -984,7 +978,7 @@ const Dashboard = () => {
                       checked={groupSelection.includes(u.id)}
                       onChange={() => toggleGroupMember(u.id)}
                     />
-                    <div className="group-row__avatar">{u.avatar || u.name[0]}</div>
+                    <div className="group-row__avatar">{u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}</div>
                     <div className="group-row__info">
                       <div className="group-row__name">{u.name}</div>
                       <div className="group-row__status">{u.status || 'offline'}</div>
@@ -1038,7 +1032,7 @@ const Dashboard = () => {
                       className="search-result"
                       onClick={() => handleSearchFriendSelect(person)}
                     >
-                      <div className="search-result__avatar">{person.avatar || person.name[0]}</div>
+                      <div className="search-result__avatar">{person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}</div>
                       <div className="search-result__info">
                         <div className="search-result__name">{person.name}</div>
                         <div className="search-result__meta">{person.status || 'offline'}</div>
@@ -1087,7 +1081,7 @@ const Dashboard = () => {
               {addFriendSelected && (
                 <div className="addfriend-preview">
                   <div className="addfriend-preview_avatar">
-                    {addFriendSelected.avatar || addFriendSelected.name[0]}
+                    {addFriendSelected.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
                   </div>
                   <div className="addfriend-preview_info">
                     <div className="addfriend-name">{addFriendSelected.name}</div>
@@ -1107,7 +1101,7 @@ const Dashboard = () => {
                     onClick={() => setAddFriendSelected(u)}
                   >
                     <div className="search-result__avatar">
-                      {u.avatar || u.name[0]}
+                      {u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
                     </div>
                     <div className="search-result__info">
                       <div className="search-result__name">{u.name}</div>
