@@ -14,23 +14,33 @@
  * @returns JSX The full dashboard layout with sidebar and chat area.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './utils/AuthContext';
+import { io } from 'socket.io-client';
 import './Dashboard.css';
-import mockUsers from './data/users.json'; // Fake users for testing
-import emojis from './assets/Emojis/openmoji.json'; // For emojis
+import emojis from './assets/Emojis/openmoji.json';
+
+const API_URL = process.env.REACT_APP_API_URL;
 
 const Dashboard = () => {
-  const { user, logout } = useAuth(); // Current logged-in user + logout function
+  const { user, logout, updateUser } = useAuth();
 
-  // State variables for chat handling
   const [chats, setChats] = useState([]);               // List of all conversations
   const [activeChat, setActiveChat] = useState(null);   // The chat currently open
   const [newMessage, setNewMessage] = useState('');     // Text typed in input box
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile drawer state
 
-  const messagesEndRef = useRef(null); // Reference for auto-scrolling
+  const messagesEndRef = useRef(null);
   const nextIdRef = useRef(Date.now()); // simple id source for new chats
+
+  // Users fetched from the backend
+  const [users, setUsers] = useState([]);
+
+  // Holds Socket.io connection
+  const socketRef = useRef(null);
+
+  // Tracks the currently active chat in a ref
+  const activeChatRef = useRef(null);
 
   // Handels emojis
   const [showEmojiPicker, setShowEmojiPicker] = useState(false); // Emoji set
@@ -45,8 +55,11 @@ const Dashboard = () => {
   const [showSearchModal, setShowSearchModal] = useState(false); // For the search modal
   const [friendSearch, setFriendSearch] = useState(''); // For searching friends in the search modal
   const [displayName, setDisplayName] = useState(user?.name || '');
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [attachedFile, setAttachedFile] = useState(null); // { name, url, type }
+  // Load dark mode preference from localStorage so it persists after refresh
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem('darkMode') === 'true';
+  });
+  const [attachedFile, setAttachedFile] = useState(null);
   const [activeConversationTab, setActiveConversationTab] = useState('direct'); //'direct' or 'group', controls which tab is active in the sidebar chat list
   const [showAddFriendModal , setShowAddFriendModal] = useState(false); // For the "Add Friend" modal when clicking that option in settings
   const [addFriendSearch, setAddFriendSearch] = useState(''); // For searching friends in the "Add Friend" modal
@@ -60,7 +73,7 @@ const Dashboard = () => {
 
   // for emojis
   const filteredEmojis = emojis
-    .filter(e => e.group?.includes(activeCategory)) // match category
+    .filter(e => e.group?.includes(activeCategory))
     .filter(e => e.annotation?.toLowerCase().includes(emojiSearch.toLowerCase())
       || e.tags?.toLowerCase().includes(emojiSearch.toLowerCase()));
 
@@ -75,7 +88,7 @@ const Dashboard = () => {
     { icon: "🏴‍☠️", group: "flags" }
   ];
 
-  // Emoji menu effets. close when clicked outside of emoji menu box
+  // Emoji menu effets, close when clicked outside of emoji menu box
   useEffect(() => {
     const handleClickOutside = (event) => {
       const picker = document.querySelector('.emoji-picker');
@@ -90,6 +103,11 @@ const Dashboard = () => {
     };
   }, []);
 
+  // Keep activeChatRef in sync whenever activeChat state changes
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
+
   // Sync display name when user changes
   useEffect(() => {
     setDisplayName(user?.name || '');
@@ -103,7 +121,7 @@ const Dashboard = () => {
       }
       if (newMenuRef.current && !newMenuRef.current.contains(e.target)) {
         setShowNewMenu(false);
-      } // Add more dropdowns here if needed
+      }
     };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
@@ -116,7 +134,7 @@ const Dashboard = () => {
     }
   };
 
-  // Auto-grow message input box
+  // Grow message input box
   useEffect(() => {
     const input = messageInputRef.current;
     if (!input) return;
@@ -127,49 +145,221 @@ const Dashboard = () => {
     input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden'; // Show scrollbar if content exceeds max height
   }, [newMessage]);
 
-  // Load mock chats when user is available
+  // Fetch users from the backend
   useEffect(() => {
-    const loadChats = () => {
-      if (!user) return; // Do nothing if no user yet
+    const loadUsers = async () => {
+      if (!user) return;
 
-      console.log("[MOCK] Generating chats from mockUsers.json");
+      try {
+        const response = await fetch(`${API_URL}/api/auth/users`);
+        const data = await response.json();
 
-      // Create fake chat list from mock users
-      const mockChatList = mockUsers
-        .filter(mockUser => mockUser.username !== user.username) // Exclude self
-        .map((mockUser, index) => ({
-          id: mockUser.id,
-          name: mockUser.name,
-          avatar: mockUser.avatar.includes('ui-avatars')
-            ? mockUser.name.split(' ').map(n => n[0]).join('')
-            : mockUser.avatar,
-          status: 'Online',
-          lastMessage: index === 0
-            ? `Hi ${user.name}, ready to test the UI!`
-            : `Last message from ${mockUser.name}.`,
-          lastMessageTime: '12:00 PM',
-          unreadCount: index === 0 ? 1 : 0,
-          members: [user.name, mockUser.name],
-          messages: [
-            { id: 1, content: `Hello ${user.name}`, type: 'received', time: '11:58 AM' },
-            { id: 2, content: "This is a mock conversation for UI testing.", type: 'received', time: '11:59 AM' }
-          ]
-        }));
+        if (data.success) {
+          setUsers(data.users.filter(u => u.id !== user.id));
 
-      setChats(mockChatList); // Save chats
+          const token = localStorage.getItem('token');
 
-      if (mockChatList.length > 0) {
-        setActiveChat({ ...mockChatList[0], unreadCount: 0 }); // Open first chat by default and mark read
-        setChats(prev => prev.map(c => c.id === mockChatList[0].id ? { ...c, unreadCount: 0 } : c));
+          const contactsRes = await fetch(`${API_URL}/api/contacts`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          const contactsData = await contactsRes.json();
+
+          const chatList = contactsData.success
+            ? contactsData.contacts.map(u => ({
+                id:              u.id,
+                name:            u.name,
+                username:        u.username,
+                avatar:          u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+                status:          'offline',
+                lastMessage:     'Click to start chatting',
+                lastMessageTime: '',
+                unreadCount:     0,
+                messages:        [],
+                members:         [user.name, u.name],
+              }))
+            : [];
+
+          // Message preview for each chat
+          const previewsRes = await fetch(`${API_URL}/api/messages/previews`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          const previewsData = await previewsRes.json();
+
+          const previewMap = {};
+          if (previewsData.success) {
+            for (const p of previewsData.previews) {
+              previewMap[p.other_id] = {
+                lastMessage:     p.content,
+                lastMessageTime: new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              };
+            }
+          }
+
+          // Fetch who is currently online
+          const onlineRes = await fetch(`${API_URL}/api/online`);
+          const onlineData = await onlineRes.json();
+          const onlineIds = new Set(onlineData.success ? onlineData.onlineUserIds : []);
+
+          // Apply previews and online status to each chat
+          const chatListWithPreviews = chatList.map(chat => ({
+            ...chat,
+            ...(previewMap[chat.id] || {}),
+            status: onlineIds.has(chat.id) ? 'online' : 'offline',
+          }));
+
+          // Also load any groups this user belongs to
+          const groupRes = await fetch(`${API_URL}/api/groups`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          const groupData = await groupRes.json();
+
+          let groupChats = [];
+          if (groupData.success) {
+            groupChats = groupData.groups.map(g => ({
+              id:              `group_${g.id}`,
+              groupId:         g.id,
+              name:            g.name,
+              isGroup:         true,
+              avatar:          g.name[0]?.toUpperCase() || 'G',
+              status:          `${g.member_ids.length} members`,
+              lastMessage:     g.last_message
+                                 ? `${g.last_message_sender}: ${g.last_message}`
+                                 : 'Click to view messages',
+              lastMessageTime: g.last_message_at
+                                 ? new Date(g.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                 : '',
+              unreadCount:     0,
+              messages:        [],
+              members:         g.member_ids,
+            }));
+          }
+
+          setChats([...chatListWithPreviews, ...groupChats]);
+        }
+      } catch (err) {
+        console.error('[Dashboard] Failed to load users:', err);
       }
     };
 
-    if (user) {
-      loadChats();
-    }
+    if (user) loadUsers();
   }, [user]);
 
-  // Auto-scroll when activeChat changes
+  // Connect to Socket.io
+  useEffect(() => {
+    if (!user) return;
+
+    // Create the socket connection to our backend
+    const socket = io(API_URL);
+    socketRef.current = socket;
+
+    // Tell the server the user is so it can route messages to them
+    socket.emit('register', user.id);
+
+    // Listen for incoming messages from other users
+    socket.on('receive_message', (message) => {
+      // Decryption should go here
+      const contentToDisplay = message.content;
+
+      const newMsg = {
+        id:      message.id,
+        content: contentToDisplay,
+        type:    'received',
+        time:    new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      // Update the chat list
+      setChats(prev => prev.map(chat => {
+        if (chat.id !== message.senderId) return chat;
+        const isOpen = activeChatRef.current?.id === message.senderId;
+        return {
+          ...chat,
+          messages:        [...chat.messages, newMsg],
+          lastMessage:     contentToDisplay,
+          lastMessageTime: 'Just now',
+          unreadCount:     isOpen ? 0 : (chat.unreadCount || 0) + 1,
+        };
+      }));
+
+      setActiveChat(prev => {
+        if (!prev || prev.id !== message.senderId) return prev;
+        return { ...prev, messages: [...prev.messages, newMsg] };
+      });
+    });
+
+    // Listen for user online/offline changes
+    socket.on('user_online', (userId) => {
+      setChats(prev => prev.map(chat =>
+        chat.id === userId ? { ...chat, status: 'online' } : chat
+      ));
+    });
+
+    socket.on('user_offline', (userId) => {
+      setChats(prev => prev.map(chat =>
+        chat.id === userId ? { ...chat, status: 'offline' } : chat
+      ));
+    });
+
+    // Listen for a new group being created
+    socket.on('group_created', (group) => {
+      const groupChatId = `group_${group.id}`;
+      const newGroupChat = {
+        id:              groupChatId,
+        groupId:         group.id,       
+        name:            group.name,
+        isGroup:         true,
+        avatar:          group.name[0]?.toUpperCase() || 'G',
+        status:          `${group.memberIds.length} members`,
+        lastMessage:     'Group created',
+        lastMessageTime: 'Just now',
+        unreadCount:     0,
+        messages:        [],
+        members:         group.memberIds,
+      };
+
+      // Add to chat list
+      setChats(prev => {
+        if (prev.find(c => c.id === groupChatId)) return prev;
+        return [newGroupChat, ...prev];
+      });
+    });
+
+    // Listen for incoming group messages from other users
+    socket.on('receive_group_message', (message) => {
+      const groupChatId = `group_${message.groupId}`;
+      const newMsg = {
+        id:         message.id,
+        content:    message.content,
+        senderName: message.senderName,
+        type:       'received',
+        time:       new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      const isOpen = activeChatRef.current?.id === groupChatId;
+
+      setChats(prev => prev.map(chat => {
+        if (chat.id !== groupChatId) return chat;
+        return {
+          ...chat,
+          messages:        [...chat.messages, newMsg],
+          lastMessage:     `${message.senderName}: ${message.content}`,
+          lastMessageTime: 'Just now',
+          unreadCount:     isOpen ? 0 : (chat.unreadCount || 0) + 1,
+        };
+      }));
+
+      setActiveChat(prev => {
+        if (!prev || prev.id !== groupChatId) return prev;
+        return { ...prev, messages: [...prev.messages, newMsg] };
+      });
+    });
+
+    // Disconnect the socket when user logs out or disconnects
+    return () => {
+      socket.disconnect();
+    };
+  }, [user]);
+
+  // Scroll when activeChat changes
   useEffect(() => {
     scrollToBottom();
     if (activeChat) {
@@ -181,39 +371,112 @@ const Dashboard = () => {
     }
   }, [activeChat]);
 
+  // Load message history from the database when opening a conversation
+  const loadMessageHistory = async (otherUserId) => {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_URL}/api/messages/${otherUserId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }, // send our login token
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        const messages = data.messages.map(msg => ({
+          id:      msg.id,
+          // Decryption here
+          content: msg.content,
+          type:    msg.sender_id === user.id ? 'sent' : 'received',
+          time:    new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }));
+
+        // Update both the active chat view and the chats list with the loaded history
+        setActiveChat(prev => prev ? { ...prev, messages } : prev);
+        setChats(prev => prev.map(c => c.id === otherUserId ? { ...c, messages } : c));
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to load message history:', err);
+    }
+  };
+
+  // Load message history for a group conversation
+  const loadGroupMessageHistory = async (groupId) => {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_URL}/api/groups/${groupId}/messages`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        const messages = data.messages.map(msg => ({
+          id:         msg.id,
+          content:    msg.content,
+          senderName: msg.sender_name,
+          type:       msg.sender_id === user.id ? 'sent' : 'received',
+          time:       new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }));
+
+        const groupChatId = `group_${groupId}`;
+        setActiveChat(prev => prev ? { ...prev, messages } : prev);
+        setChats(prev => prev.map(c => c.id === groupChatId ? { ...c, messages } : c));
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to load group message history:', err);
+    }
+  };
+
   // Send a new message
   const handleSendMessage = () => {
     if ((!newMessage.trim() && !attachedFile) || !activeChat) return;
 
+    const content = newMessage.trim() || (attachedFile ? attachedFile.name : '');
+
+    // Encryption here
+    const contentToSend = content;
+
+    if (socketRef.current) {
+      if (activeChat.isGroup) {
+        socketRef.current.emit('send_group_message', {
+          senderId: user.id,
+          groupId:  activeChat.groupId,
+          content:  contentToSend,
+        });
+      } else {
+        socketRef.current.emit('send_message', {
+          senderId:    user.id,
+          recipientId: activeChat.id,
+          content:     contentToSend,
+        });
+      }
+    }
+
+    // Add the message to the UI immediately so it feels instant
+    // The server will confirm with the real saved ID via 'message_sent' event
     const message = {
-      id: Date.now(),
-      content: newMessage || (attachedFile ? attachedFile.name : ''),
+      id:       Date.now(), // temporary ID, replaced when server confirms
+      content:  content,    // show the original (unencrypted) content to the sender
       fileName: attachedFile?.name || null,
-      fileUrl: attachedFile?.url || null,
+      fileUrl:  attachedFile?.url  || null,
       fileType: attachedFile?.type || null,
-      type: 'sent',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      type:     'sent',
+      time:     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Update active chat with new message
     const updatedChat = {
       ...activeChat,
-      messages: [...activeChat.messages, message],
-      lastMessage: newMessage,
-      lastMessageTime: 'Just now'
+      messages:        [...activeChat.messages, message],
+      lastMessage:     content,
+      lastMessageTime: 'Just now',
     };
 
     setActiveChat(updatedChat);
-
-    // Update chats list and move conversation to top
     setChats(prevChats => {
       const others = prevChats.filter(chat => chat.id !== activeChat.id);
       return [updatedChat, ...others];
     });
 
-    setNewMessage(''); // Clear input box
-    // Keep object URL alive so download works; reset picker state only.
-    setAttachedFile(null); // Clear file tag
+    setNewMessage('');
+    setAttachedFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -248,7 +511,7 @@ const Dashboard = () => {
 
   const handleNewChat = () => {
     setShowNewMenu(false); // Close the "+ New" dropdown
-    setFriendSearch(''); // reset search query
+    setFriendSearch('');
     setShowSearchModal(true); // Open the search modal to find friends and start a new chat
   };
 
@@ -269,20 +532,24 @@ const Dashboard = () => {
   const handleAddFriend = () => {
     setShowSettingsMenu(false); // Close settings dropdown
     setShowNewMenu(false); // Close the "+ New" dropdown if it's open
-    setAddFriendSearch(''); // Reset search query
-    setAddFriendSelected(null); // Clear any previous selection
+    setAddFriendSearch('');
+    setAddFriendSelected(null);
     setShowAddFriendModal(true); // Open the "Add Friend" modal
   };
 
   const handleCreateGroupFromSelection = () => {
-    const selectedUsers = mockUsers.filter(u => groupSelection.includes(u.id));
-    const uniqueMembers = Array.from(new Set([user?.name || 'You', ...selectedUsers.map(u => u.name)]));
-    if (uniqueMembers.length < 3) return;
-    const name = groupName.trim() || `Group (${uniqueMembers.length - 1})`;
-    const newChat = createChatShell(name, uniqueMembers);
-    setChats(prev => [newChat, ...prev]);
-    setActiveChat(newChat);
-    setSidebarOpen(false);
+    if (groupSelection.length < 2) return;
+
+    const name = groupName.trim() || `Group (${groupSelection.length})`;
+
+    if (socketRef.current) {
+      socketRef.current.emit('create_group', {
+        creatorId: user.id,
+        name,
+        memberIds: groupSelection,
+      });
+    }
+
     setShowGroupModal(false);
     setGroupSelection([]);
     setGroupName('');
@@ -294,49 +561,90 @@ const Dashboard = () => {
     );
   };
 
+  // Save new display name
+  const handleSaveName = async () => {
+    if (!displayName.trim()) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: displayName.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        updateUser(data.user);      
+        setShowSettingsModal(false);
+      } else {
+        alert(data.message || 'Failed to save name.');
+      }
+    } catch (err) {
+      console.error('[Settings] Save name error:', err);
+      alert('Could not connect to the server.');
+    }
+  };
+
   const handleSelectChat = (chatId) => {
-    setChats(prev => {
-      const updated = prev.map(c =>
-        c.id === chatId ? { ...c, unreadCount: 0 } : c
-      );
-      const selected = updated.find(c => c.id === chatId);
-      setActiveChat(selected || null);
-      return updated;
-    });
+    // Clear unread count and set this chat as active
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, unreadCount: 0 } : c));
+    const selected = chats.find(c => c.id === chatId);
+    if (selected) {
+      setActiveChat({ ...selected, unreadCount: 0 });
+      // Load the history depending on whether this is a group or direct chat
+      if (selected.isGroup) {
+        loadGroupMessageHistory(selected.groupId);
+      } else {
+        loadMessageHistory(selected.id);
+      }
+    }
     setSidebarOpen(false);
   };
 
-  // When selecting a friend from the search modal, either open existing chat or create new one
+  // When selecting a friend from the search modal, open existing chat or create new one
   const handleSearchFriendSelect = (person) => {
-    const existingChat = chats.find(chat =>
-      (chat.members?.length || 0) <= 2 && chat.name === person.name
-    );
+    // Match by real user ID
+    const existingChat = chats.find(c => !c.isGroup && c.id === person.id);
 
-    // If a direct chat with that person already exists, open it. Otherwise, create a new one.
     if (existingChat) {
       setActiveChat(existingChat);
     } else {
-      const newChat = createChatShell(person.name, [user?.name || 'You', person.name]);
+      const newChat = {
+        id:              person.id,
+        name:            person.name,
+        avatar:          person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+        status:          'online',
+        lastMessage:     'Click to start chatting',
+        lastMessageTime: '',
+        unreadCount:     0,
+        messages:        [],
+        members:         [user?.name || 'You', person.name],
+      };
       setChats(prev => [newChat, ...prev]);
       setActiveChat(newChat);
     }
 
-    setShowSearchModal(false); // Close the search modal
-    setShowNewMenu(false); // Close the "+ New" dropdown if it's still open
-    setFriendSearch(''); // Reset search query for next time
-    setSidebarOpen(false); // Close sidebar on mobile after selecting a chat
+    setShowSearchModal(false);
+    setShowNewMenu(false);
+    setFriendSearch('');
+    setSidebarOpen(false);
   };
 
-  const directChats = chats.filter(c => (c.members?.length || 2) <= 2); // Direct messages are defined as chats with 2 or fewer members (including self)
+  const directChats = chats.filter(c => (c.members?.length || 2) <= 2); // Direct messages are defined as chats with 2 or less members
   const groupChats = chats.filter(c => (c.members?.length || 1) > 2); // Group chats are defined as chats with more than 2 members
   const visibleChats = activeConversationTab === 'direct' ? directChats : groupChats; // Chats to show based on active tab
-  // Text to show when there are no conversations in the active tab
+  // When there are no conversations in the active tab
   const emptyStateText = activeConversationTab === 'direct'
     ? 'No direct messages yet.'
     : 'No group conversations yet.';
-  const filteredFriends = mockUsers.filter(person =>
+  const filteredFriends = users.filter(person =>
     person.name.toLowerCase().includes(friendSearch.toLowerCase())
-  ); // Friends filtered by search query in the search modal
+  );
 
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark' : ''}`}>
@@ -494,6 +802,10 @@ const Dashboard = () => {
                   key={message.id}
                   className={`message ${message.type}`}
                 >
+                  {/* Show sender name above received messages in group chats */}
+                  {activeChat.isGroup && message.type === 'received' && message.senderName && (
+                    <div className="message-sender-name">{message.senderName}</div>
+                  )}
                   {message.content}
                   {message.fileName && (
                     <div className="message-file">
@@ -627,14 +939,18 @@ const Dashboard = () => {
                 <input
                   type="checkbox"
                   checked={isDarkMode}
-                  onChange={(e) => setIsDarkMode(e.target.checked)}
+                  onChange={(e) => {
+                    setIsDarkMode(e.target.checked);
+                    localStorage.setItem('darkMode', e.target.checked);
+                  }}
                 />
                 <span>Dark mode</span>
               </label>
             </div>
 
             <div className="settings-modal__footer">
-              <button className="ghost-btn" onClick={() => setShowSettingsModal(false)}>Close</button>
+              <button className="ghost-btn" onClick={() => setShowSettingsModal(false)}>Cancel</button>
+              <button className="primary-btn" onClick={handleSaveName}>Save</button>
             </div>
           </div>
         </>
@@ -661,9 +977,7 @@ const Dashboard = () => {
             </label>
 
             <div className="group-modal__list">
-              {mockUsers
-                .filter(u => u.username !== user?.username) // exclude self if present
-                .map(u => (
+              {users.map(u => (   // users from API already excludes the logged-in user
                   <label key={u.id} className="group-row">
                     <input
                       type="checkbox"
@@ -784,23 +1098,20 @@ const Dashboard = () => {
 
               {/*Results */}
               <div className="search-results">
-                {mockUsers
-                  .filter(u => u.username !== user?.username) // exclude self if present
+                {users
                   .filter(u => u.name.toLowerCase().includes(addFriendSearch.toLowerCase()))
-                 .map((user) => (
-                 <button
-                    key={user.id}
-                    className={`search-result ${
-                      addFriendSelected?.id === user.id ? 'active' : ''
-                    }`}
-                    onClick={() => setAddFriendSelected(user)}
+                  .map((u) => ( // renamed to 'u' to avoid shadowing the logged-in 'user'
+                  <button
+                    key={u.id}
+                    className={`search-result ${addFriendSelected?.id === u.id ? 'active' : ''}`}
+                    onClick={() => setAddFriendSelected(u)}
                   >
                     <div className="search-result__avatar">
-                      {user.avatar || user.name[0]}
+                      {u.avatar || u.name[0]}
                     </div>
                     <div className="search-result__info">
-                      <div className="search-result__name">{user.name}</div>
-                      <div className="search-result__meta">{user.status || 'offline'}</div>
+                      <div className="search-result__name">{u.name}</div>
+                      <div className="search-result__meta">{u.status || 'offline'}</div>
                     </div>
                   </button>
                 ))}
@@ -810,11 +1121,40 @@ const Dashboard = () => {
               <button
                 className="addfriend-btn"
                 disabled={!addFriendSelected}
-                onClick={() => {
+                onClick={async () => {
                   const person = addFriendSelected;
-                  const newChat = createChatShell(person.name, [user?.name || 'You', person.name]);
-                  setChats(prev => [newChat, ...prev]);
-                  setActiveChat(newChat);
+                  const token = localStorage.getItem('token');
+
+                  // Save the contact to the database so it persists after refresh
+                  await fetch(`${API_URL}/api/contacts`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ contactId: person.id }),
+                  });
+
+                  // Add to the sidebar if not already there
+                  const existingChat = chats.find(c => !c.isGroup && c.id === person.id);
+                  if (!existingChat) {
+                    const newChat = {
+                      id:              person.id,
+                      name:            person.name,
+                      avatar:          person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+                      status:          'online',
+                      lastMessage:     'Click to start chatting',
+                      lastMessageTime: '',
+                      unreadCount:     0,
+                      messages:        [],
+                      members:         [user?.name || 'You', person.name],
+                    };
+                    setChats(prev => [newChat, ...prev]);
+                    setActiveChat(newChat);
+                  } else {
+                    setActiveChat(existingChat);
+                  }
+
                   setShowAddFriendModal(false);
                   setAddFriendSearch('');
                   setAddFriendSelected(null);

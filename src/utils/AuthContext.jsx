@@ -1,25 +1,12 @@
-/**
- * AuthContext
- * This file manages authentication (login, logout, register) for the app.
- * It uses React Context to share user information across all components.
- *
- * Features:
- *  - Stores user info and login state.
- *  - Provides login, logout, and register functions (mocked for testing).
- *  - Saves session data in localStorage so it persists after refresh.
- *  - Creates temporary mock users if login username is not found.
- *
- * @returns AuthProvider component that wraps the app and provides authentication context.
- */
+import { createContext, useState, useContext, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import mockUsers from '../data/users.json'; // Fake user data for testing
-import { useNavigate } from 'react-router-dom'; // For navigation after login/logout
+// The base URL for all API calls
+const API_URL = process.env.REACT_APP_API_URL;
 
 // Create the authentication context
 const AuthContext = createContext();
 
-// Custom hook to use authentication context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -28,83 +15,115 @@ export const useAuth = () => {
   return context;
 };
 
-// Provider component that wraps the app
 export const AuthProvider = ({ children }) => {
-  // State variables for authentication
-  const [user, setUser] = useState(null);           // Current logged-in user
-  const [isAuthenticated, setIsAuthenticated] = useState(false); // Login status
-  const [loading, setLoading] = useState(true);     // Loading state while checking localStorage
-  const navigate = useNavigate(); // For programmatic navigation after login/logout
+  const [user, setUser]                   = useState(null);  // The logged-in user's info
+  const [isAuthenticated, setIsAuthenticated] = useState(false); // Are they logged in?
+  const [loading, setLoading]             = useState(true);  // Still checking localStorage?
 
-  // Check localStorage for saved session on first load
+  const navigate = useNavigate();
+
+  // Restore session from local storage
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token    = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
-    
+
     if (token && userData) {
-      setUser(JSON.parse(userData)); // Restore user
-      setIsAuthenticated(true);      // Mark as logged in
+      setUser(JSON.parse(userData));
+      setIsAuthenticated(true);
     }
-    setLoading(false); // Done checking
+
+    setLoading(false);
   }, []);
 
-  // Mock login function (always succeeds)
+  // Login
   const login = async (username, password) => {
-    await new Promise(resolve => setTimeout(resolve, 500)); // Fake delay
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, // Tell server we're sending JSON
+        body: JSON.stringify({ username, password }),     // Convert the object to a JSON string
+      });
 
-    let userFound = mockUsers.find(u => u.username === username);
+      // Parse the JSON response the server sends back
+      const data = await response.json();
 
-    // If user not found, create a temporary mock user
-    if (!userFound) {
-      console.log(`[MOCK] Creating temporary user profile for: ${username}`);
-      userFound = {
-        id: Date.now(),
-        username: username,
-        name: username.charAt(0).toUpperCase() + username.slice(1), 
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=1abc9c&color=fff`
+      if (data.success) {
+        // Save user info and token in state + localStorage
+        setUser(data.user);
+        setIsAuthenticated(true);
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        navigate('/dashboard'); // Redirect to the chat dashboard
+      }
+
+      // Return the full response so Login.jsx can show error messages if needed
+      return data;
+
+    } catch (err) {
+      // This catches network errors
+      console.error('[Auth] Login fetch failed:', err);
+      return {
+        success: false,
+        message: 'Could not connect to the server. Make sure the backend is running.'
       };
     }
-
-    // Fake token for mock login
-    const token = 'local-mock-token';
-
-    // Store user without password
-    const userToStore = { ...userFound };
-    delete userToStore.password; 
-
-    // Update state and localStorage
-    setUser(userToStore);
-    setIsAuthenticated(true);
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userToStore));
-    navigate('/dashboard'); // Redirect to dashboard after login
-    
-    return { success: true, message: 'Login successful' };
   };
 
-  // Mock register function (not implemented)
-  const register = async (userData) => { /* ... mock implementation ... */ };
+  // Registration
+  const register = async (userData) => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData),
+      });
 
-  // Logout function clears user and localStorage
+      const data = await response.json();
+
+      if (data.success) {
+        setUser(data.user);
+        setIsAuthenticated(true);
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        navigate('/dashboard');
+      }
+
+      return data;
+
+    } catch (err) {
+      console.error('[Auth] Register fetch failed:', err);
+      return {
+        success: false,
+        message: 'Could not connect to the server. Make sure the backend is running.'
+      };
+    }
+  };
+
+  // Profile update for changing display name
+  const updateUser = (updatedUser) => {
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
+  // Logout
   const logout = () => {
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    navigate('/'); // Redirect to landing page after logout
+    navigate('/'); // Go back to the landing page
   };
 
-  // Value provided to all components
   const value = {
     user,
     isAuthenticated,
     login,
     register,
     logout,
-    loading
+    updateUser,
+    loading,
   };
 
-  // Wrap children with AuthContext provider
   return (
     <AuthContext.Provider value={value}>
       {children}

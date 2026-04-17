@@ -256,6 +256,22 @@
   transform: translateY(-1px);
 }
 
+.primary-btn {
+  border: none;
+  background: #1abc9c;
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.primary-btn:hover {
+  background: #17a589;
+  transform: translateY(-1px);
+}
+
 .settings-toggle {
   display: inline-flex;
   align-items: center;
@@ -1261,6 +1277,14 @@
   border-top-left-radius: 5px;
   border: 1px solid #e9ecef;
   color: #2c3e50;
+}
+
+/* Sender name shown above received messages in group chats */
+.message-sender-name {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #1abc9c;
+  margin-bottom: 2px;
 }
 
 /* Sent message bubble */
