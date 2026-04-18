@@ -35,6 +35,7 @@ const Dashboard = () => {
 
   // Users fetched from the backend
   const [users, setUsers] = useState([]);
+  const [contacts, setContacts] = useState([]);
 
   // Holds Socket.io connection
   const socketRef = useRef(null);
@@ -64,12 +65,31 @@ const Dashboard = () => {
   const [showAddFriendModal , setShowAddFriendModal] = useState(false); // For the "Add Friend" modal when clicking that option in settings
   const [addFriendSearch, setAddFriendSearch] = useState(''); // For searching friends in the "Add Friend" modal
   const [addFriendSelected, setAddFriendSelected] = useState(null); // For selecting a friend in the "Add Friend" modal
-
   const settingsMenuRef = useRef(null);
   const newMenuRef = useRef(null); // ref for the "+ New" dropdown menu to handle clicks outside of it
   const fileInputRef = useRef(null);
   const messageInputRef = useRef(null); // ref to auto growing textarea for message input
 
+  const getAvatarInitials = (name = '') => name
+    .split(' ')
+    .map(word => word[0]?.toUpperCase() || '')
+    .join('')
+    .slice(0, 2);
+
+  const renderAvatar = (avatar, avatarUrl, name) => {
+    if (avatarUrl) {
+      return (
+        <img
+          src={avatarUrl}
+          alt=""
+          className="chat-avatar__image"
+          aria-hidden="true"
+        />
+      );
+    }
+
+    return avatar || getAvatarInitials(name);
+  };
 
   // for emojis
   const filteredEmojis = emojis
@@ -155,8 +175,6 @@ const Dashboard = () => {
         const data = await response.json();
 
         if (data.success) {
-          setUsers(data.users.filter(u => u.id !== user.id));
-
           const token = localStorage.getItem('token');
 
           const contactsRes = await fetch(`${API_URL}/api/contacts`, {
@@ -164,20 +182,46 @@ const Dashboard = () => {
           });
           const contactsData = await contactsRes.json();
 
-          const chatList = contactsData.success
+          // Fetch who is currently online
+          const onlineRes = await fetch(`${API_URL}/api/online`);
+          const onlineData = await onlineRes.json();
+          const onlineIds = new Set(onlineData.success ? onlineData.onlineUserIds : []);
+
+          setUsers(
+            data.users
+              .filter(u => u.id !== user.id)
+              .map(u => ({
+                ...u,
+                status: onlineIds.has(u.id) ? 'online' : 'offline',
+              }))
+          );
+
+          const contactList = contactsData.success
             ? contactsData.contacts.map(u => ({
+                id:       u.id,
+                username: u.username,
+                name:     u.name,
+                avatar:   getAvatarInitials(u.name),
+                avatarUrl: u.avatar_url || null,
+                status:   onlineIds.has(u.id) ? 'online' : 'offline',
+              }))
+            : [];
+
+          setContacts(contactList);
+
+          const chatList = contactList.map(u => ({
                 id:              u.id,
                 name:            u.name,
                 username:        u.username,
-                avatar:          u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-                status:          'offline',
+                avatar:          u.avatar,
+                avatarUrl:       u.avatarUrl,
+                status:          u.status,
                 lastMessage:     'Click to start chatting',
                 lastMessageTime: '',
                 unreadCount:     0,
-                messages:        [],
-                members:         [user.name, u.name],
-              }))
-            : [];
+            messages:        [],
+            members:         [user.name, u.name],
+          }));
 
           // Message preview for each chat
           const previewsRes = await fetch(`${API_URL}/api/messages/previews`, {
@@ -195,16 +239,11 @@ const Dashboard = () => {
             }
           }
 
-          // Fetch who is currently online
-          const onlineRes = await fetch(`${API_URL}/api/online`);
-          const onlineData = await onlineRes.json();
-          const onlineIds = new Set(onlineData.success ? onlineData.onlineUserIds : []);
-
           // Apply previews and online status to each chat
           const chatListWithPreviews = chatList.map(chat => ({
             ...chat,
             ...(previewMap[chat.id] || {}),
-            status: onlineIds.has(chat.id) ? 'online' : 'offline',
+            status: chat.status,
           }));
 
           // Also load any groups this user belongs to
@@ -537,6 +576,11 @@ const Dashboard = () => {
     setShowAddFriendModal(true); // Open the "Add Friend" modal
   };
 
+  // const handleFriendRequests = () => {
+  //   setShowNewMenu(false);
+  //   setShowFriendRequestsModal(true);
+  // };
+
   const handleCreateGroupFromSelection = () => {
     if (groupSelection.length < 2) return;
 
@@ -617,7 +661,8 @@ const Dashboard = () => {
       const newChat = {
         id:              person.id,
         name:            person.name,
-        avatar:          person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+        avatar:          getAvatarInitials(person.name),
+        avatarUrl:       person.avatar_url || person.avatarUrl || null,
         status:          'online',
         lastMessage:     'Click to start chatting',
         lastMessageTime: '',
@@ -642,7 +687,7 @@ const Dashboard = () => {
   const emptyStateText = activeConversationTab === 'direct'
     ? 'No direct messages yet.'
     : 'No group conversations yet.';
-  const filteredFriends = users.filter(person =>
+  const filteredFriends = contacts.filter(person =>
     person.name.toLowerCase().includes(friendSearch.toLowerCase())
   );
 
@@ -697,6 +742,7 @@ const Dashboard = () => {
                 {showNewMenu && (
                   <div className="chat-action-dropdown">
                     <button onClick={handleAddFriend}>Add Friend</button>
+                    {/* <button onClick={handleFriendRequests}>Friend Requests</button> */}
                     <button onClick={handleNewChat}>Search Friends</button>
                   </div>
                 )}
@@ -735,7 +781,7 @@ const Dashboard = () => {
                   className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
                   onClick={() => handleSelectChat(chat.id)}
                 >
-                  <div className="chat-avatar">{chat.avatar}</div>
+                  <div className="chat-avatar">{renderAvatar(chat.avatar, chat.avatarUrl, chat.name)}</div>
                   <div className="chat-info">
                     <div className="chat-name">{chat.name}</div>
                     <div className="chat-preview">{chat.lastMessage}</div>
@@ -782,7 +828,7 @@ const Dashboard = () => {
               >
                 ☰
               </button>
-              <div className="chat-avatar">{activeChat.avatar}</div>
+              <div className="chat-avatar">{renderAvatar(activeChat.avatar, activeChat.avatarUrl, activeChat.name)}</div>
               <div className="chat-info">
                 <div className="chat-name">{activeChat.name}</div>
                 <div className="chat-status">{activeChat.status}</div>
@@ -1136,6 +1182,7 @@ const Dashboard = () => {
                       id:              person.id,
                       name:            person.name,
                       avatar:          person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+                      avatarUrl:       person.avatar_url || person.avatarUrl || null,
                       status:          'online',
                       lastMessage:     'Click to start chatting',
                       lastMessageTime: '',
@@ -1161,6 +1208,26 @@ const Dashboard = () => {
           </div>
         </>
       )}  
+
+      {/*
+      {showFriendRequestsModal && (
+        <>
+          <div className="modal-backdrop" onClick={() => setShowFriendRequestsModal(false)} />
+          <div className="search-modal" role="dialog" aria-modal="true">
+            <div className="search-modal__header">
+              <div>
+                <h4>Friend Requests</h4>
+                <p>Review pending friend requests.</p>
+              </div>
+              <button className="modal-close" onClick={() => setShowFriendRequestsModal(false)} aria-label="Close friend requests modal">×</button>
+            </div>
+            <div className="search-modal__body">
+              <div className="search-results__empty">No pending friend requests yet.</div>
+            </div>
+          </div>
+        </>
+      )}
+      */}
           
     </div>
   );
