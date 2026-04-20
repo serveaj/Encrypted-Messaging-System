@@ -35,6 +35,7 @@ const Dashboard = () => {
 
   // Users fetched from the backend
   const [users, setUsers] = useState([]);
+  const [contacts, setContacts] = useState([]);
 
   // Holds Socket.io connection
   const socketRef = useRef(null);
@@ -64,12 +65,31 @@ const Dashboard = () => {
   const [showAddFriendModal , setShowAddFriendModal] = useState(false); // For the "Add Friend" modal when clicking that option in settings
   const [addFriendSearch, setAddFriendSearch] = useState(''); // For searching friends in the "Add Friend" modal
   const [addFriendSelected, setAddFriendSelected] = useState(null); // For selecting a friend in the "Add Friend" modal
-
   const settingsMenuRef = useRef(null);
   const newMenuRef = useRef(null); // ref for the "+ New" dropdown menu to handle clicks outside of it
   const fileInputRef = useRef(null);
   const messageInputRef = useRef(null); // ref to auto growing textarea for message input
 
+  const getAvatarInitials = (name = '') => name
+    .split(' ')
+    .map(word => word[0]?.toUpperCase() || '')
+    .join('')
+    .slice(0, 2);
+
+  const renderAvatar = (avatar, avatarUrl, name) => {
+    if (avatarUrl) {
+      return (
+        <img
+          src={avatarUrl}
+          alt=""
+          className="chat-avatar__image"
+          aria-hidden="true"
+        />
+      );
+    }
+
+    return avatar || getAvatarInitials(name);
+  };
 
   // for emojis
   const filteredEmojis = emojis
@@ -155,8 +175,6 @@ const Dashboard = () => {
         const data = await response.json();
 
         if (data.success) {
-          setUsers(data.users.filter(u => u.id !== user.id));
-
           const token = localStorage.getItem('token');
 
           const contactsRes = await fetch(`${API_URL}/api/contacts`, {
@@ -164,20 +182,46 @@ const Dashboard = () => {
           });
           const contactsData = await contactsRes.json();
 
-          const chatList = contactsData.success
+          // Fetch who is currently online
+          const onlineRes = await fetch(`${API_URL}/api/online`);
+          const onlineData = await onlineRes.json();
+          const onlineIds = new Set(onlineData.success ? onlineData.onlineUserIds : []);
+
+          setUsers(
+            data.users
+              .filter(u => u.id !== user.id)
+              .map(u => ({
+                ...u,
+                status: onlineIds.has(u.id) ? 'online' : 'offline',
+              }))
+          );
+
+          const contactList = contactsData.success
             ? contactsData.contacts.map(u => ({
+                id:       u.id,
+                username: u.username,
+                name:     u.name,
+                avatar:   getAvatarInitials(u.name),
+                avatarUrl: u.avatar_url || null,
+                status:   onlineIds.has(u.id) ? 'online' : 'offline',
+              }))
+            : [];
+
+          setContacts(contactList);
+
+          const chatList = contactList.map(u => ({
                 id:              u.id,
                 name:            u.name,
                 username:        u.username,
-                avatar:          u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-                status:          'offline',
+                avatar:          u.avatar,
+                avatarUrl:       u.avatarUrl,
+                status:          u.status,
                 lastMessage:     'Click to start chatting',
                 lastMessageTime: '',
                 unreadCount:     0,
-                messages:        [],
-                members:         [user.name, u.name],
-              }))
-            : [];
+            messages:        [],
+            members:         [user.name, u.name],
+          }));
 
           // Message preview for each chat
           const previewsRes = await fetch(`${API_URL}/api/messages/previews`, {
@@ -195,16 +239,11 @@ const Dashboard = () => {
             }
           }
 
-          // Fetch who is currently online
-          const onlineRes = await fetch(`${API_URL}/api/online`);
-          const onlineData = await onlineRes.json();
-          const onlineIds = new Set(onlineData.success ? onlineData.onlineUserIds : []);
-
           // Apply previews and online status to each chat
           const chatListWithPreviews = chatList.map(chat => ({
             ...chat,
             ...(previewMap[chat.id] || {}),
-            status: onlineIds.has(chat.id) ? 'online' : 'offline',
+            status: chat.status,
           }));
 
           // Also load any groups this user belongs to
@@ -257,6 +296,7 @@ const Dashboard = () => {
 
     // Listen for incoming messages from other users
     socket.on('receive_message', (message) => {
+      const senderId = Number(message.senderId);
       // Decryption should go here
       const contentToDisplay = message.content;
 
@@ -267,21 +307,30 @@ const Dashboard = () => {
         time:    new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      // Update the chat list
-      setChats(prev => prev.map(chat => {
-        if (chat.id !== message.senderId) return chat;
-        const isOpen = activeChatRef.current?.id === message.senderId;
-        return {
+      // Update the chat list and move the DM to the top
+      setChats(prev => {
+        const chatIndex = prev.findIndex(chat => !chat.isGroup && chat.id === senderId);
+        if (chatIndex === -1) return prev;
+
+        const chat = prev[chatIndex];
+        const isOpen = activeChatRef.current?.id === senderId;
+        const updatedChat = {
           ...chat,
           messages:        [...chat.messages, newMsg],
           lastMessage:     contentToDisplay,
           lastMessageTime: 'Just now',
           unreadCount:     isOpen ? 0 : (chat.unreadCount || 0) + 1,
         };
-      }));
+
+        return [
+          updatedChat,
+          ...prev.slice(0, chatIndex),
+          ...prev.slice(chatIndex + 1),
+        ];
+      });
 
       setActiveChat(prev => {
-        if (!prev || prev.id !== message.senderId) return prev;
+        if (!prev || prev.id !== senderId) return prev;
         return { ...prev, messages: [...prev.messages, newMsg] };
       });
     });
@@ -291,12 +340,18 @@ const Dashboard = () => {
       setChats(prev => prev.map(chat =>
         chat.id === userId ? { ...chat, status: 'online' } : chat
       ));
+      setActiveChat(prev =>
+        prev && prev.id === userId ? { ...prev, status: 'online' } : prev
+      );
     });
 
     socket.on('user_offline', (userId) => {
       setChats(prev => prev.map(chat =>
         chat.id === userId ? { ...chat, status: 'offline' } : chat
       ));
+      setActiveChat(prev =>
+        prev && prev.id === userId ? { ...prev, status: 'offline' } : prev
+      );
     });
 
     // Listen for a new group being created
@@ -537,6 +592,11 @@ const Dashboard = () => {
     setShowAddFriendModal(true); // Open the "Add Friend" modal
   };
 
+  // const handleFriendRequests = () => {
+  //   setShowNewMenu(false);
+  //   setShowFriendRequestsModal(true);
+  // };
+
   const handleCreateGroupFromSelection = () => {
     if (groupSelection.length < 2) return;
 
@@ -617,8 +677,9 @@ const Dashboard = () => {
       const newChat = {
         id:              person.id,
         name:            person.name,
-        avatar:          person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-        status:          'online',
+        avatar:          getAvatarInitials(person.name),
+        avatarUrl:       person.avatar_url || person.avatarUrl || null,
+        status:          person.status || 'offline',
         lastMessage:     'Click to start chatting',
         lastMessageTime: '',
         unreadCount:     0,
@@ -642,7 +703,7 @@ const Dashboard = () => {
   const emptyStateText = activeConversationTab === 'direct'
     ? 'No direct messages yet.'
     : 'No group conversations yet.';
-  const filteredFriends = users.filter(person =>
+  const filteredFriends = contacts.filter(person =>
     person.name.toLowerCase().includes(friendSearch.toLowerCase())
   );
 
@@ -653,15 +714,9 @@ const Dashboard = () => {
         <div className="sidebar-header">
           <div className="user-info">
             {/* User avatar with fallback if image fails */}
-            <img
-              src={user?.avatar}
-              alt={user?.name}
-              className="user-avatar"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=4CAF50&color=fff`
-              }}
-            />
+            <div className="user-avatar">
+              {user?.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
+            </div>
             <div className="user-details">
               <h3>{displayName || user?.name}</h3>
               <span className="user-status">Online</span>
@@ -703,6 +758,7 @@ const Dashboard = () => {
                 {showNewMenu && (
                   <div className="chat-action-dropdown">
                     <button onClick={handleAddFriend}>Add Friend</button>
+                    {/* <button onClick={handleFriendRequests}>Friend Requests</button> */}
                     <button onClick={handleNewChat}>Search Friends</button>
                   </div>
                 )}
@@ -741,7 +797,7 @@ const Dashboard = () => {
                   className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
                   onClick={() => handleSelectChat(chat.id)}
                 >
-                  <div className="chat-avatar">{chat.avatar}</div>
+                  <div className="chat-avatar">{renderAvatar(chat.avatar, chat.avatarUrl, chat.name)}</div>
                   <div className="chat-info">
                     <div className="chat-name">{chat.name}</div>
                     <div className="chat-preview">{chat.lastMessage}</div>
@@ -788,10 +844,14 @@ const Dashboard = () => {
               >
                 ☰
               </button>
-              <div className="chat-avatar">{activeChat.avatar}</div>
+              <div className="chat-avatar">{renderAvatar(activeChat.avatar, activeChat.avatarUrl, activeChat.name)}</div>
               <div className="chat-info">
                 <div className="chat-name">{activeChat.name}</div>
-                <div className="chat-status">{activeChat.status}</div>
+                <div
+                  className={`chat-status ${activeChat.status === 'offline' ? 'chat-status--offline' : ''}`}
+                >
+                  {activeChat.status}
+                </div>
               </div>
             </div>
 
@@ -984,7 +1044,7 @@ const Dashboard = () => {
                       checked={groupSelection.includes(u.id)}
                       onChange={() => toggleGroupMember(u.id)}
                     />
-                    <div className="group-row__avatar">{u.avatar || u.name[0]}</div>
+                    <div className="group-row__avatar">{u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}</div>
                     <div className="group-row__info">
                       <div className="group-row__name">{u.name}</div>
                       <div className="group-row__status">{u.status || 'offline'}</div>
@@ -1038,7 +1098,7 @@ const Dashboard = () => {
                       className="search-result"
                       onClick={() => handleSearchFriendSelect(person)}
                     >
-                      <div className="search-result__avatar">{person.avatar || person.name[0]}</div>
+                      <div className="search-result__avatar">{person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}</div>
                       <div className="search-result__info">
                         <div className="search-result__name">{person.name}</div>
                         <div className="search-result__meta">{person.status || 'offline'}</div>
@@ -1074,7 +1134,7 @@ const Dashboard = () => {
               <input
                 type="text"
                 className="search-modal__input"
-                placeholder="Enter friend's name"
+                placeholder="Enter friend's username"
                 value={addFriendSearch}
                 onChange={(e) => {
                   setAddFriendSearch(e.target.value);
@@ -1087,11 +1147,11 @@ const Dashboard = () => {
               {addFriendSelected && (
                 <div className="addfriend-preview">
                   <div className="addfriend-preview_avatar">
-                    {addFriendSelected.avatar || addFriendSelected.name[0]}
+                    {addFriendSelected.username.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="addfriend-preview_info">
-                    <div className="addfriend-name">{addFriendSelected.name}</div>
-                    <div className="addfriend-status">{addFriendSelected.status || 'offline'}</div>
+                    <div className="addfriend-name">{addFriendSelected.username}</div>
+                    <div className="addfriend-status">{addFriendSelected.name} - {addFriendSelected.status || 'offline'}</div>
                   </div>
                 </div>
               )}
@@ -1099,7 +1159,7 @@ const Dashboard = () => {
               {/*Results */}
               <div className="search-results">
                 {users
-                  .filter(u => u.name.toLowerCase().includes(addFriendSearch.toLowerCase()))
+                  .filter(u => u.username.toLowerCase().includes(addFriendSearch.toLowerCase()))
                   .map((u) => ( // renamed to 'u' to avoid shadowing the logged-in 'user'
                   <button
                     key={u.id}
@@ -1107,11 +1167,11 @@ const Dashboard = () => {
                     onClick={() => setAddFriendSelected(u)}
                   >
                     <div className="search-result__avatar">
-                      {u.avatar || u.name[0]}
+                      {u.username.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="search-result__info">
-                      <div className="search-result__name">{u.name}</div>
-                      <div className="search-result__meta">{u.status || 'offline'}</div>
+                      <div className="search-result__name">{u.username}</div>
+                      <div className="search-result__meta">{u.name} {u.status ? `- ${u.status}` : ''}</div>
                     </div>
                   </button>
                 ))}
@@ -1142,6 +1202,7 @@ const Dashboard = () => {
                       id:              person.id,
                       name:            person.name,
                       avatar:          person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+                      avatarUrl:       person.avatar_url || person.avatarUrl || null,
                       status:          'online',
                       lastMessage:     'Click to start chatting',
                       lastMessageTime: '',
@@ -1167,6 +1228,26 @@ const Dashboard = () => {
           </div>
         </>
       )}  
+
+      {/*
+      {showFriendRequestsModal && (
+        <>
+          <div className="modal-backdrop" onClick={() => setShowFriendRequestsModal(false)} />
+          <div className="search-modal" role="dialog" aria-modal="true">
+            <div className="search-modal__header">
+              <div>
+                <h4>Friend Requests</h4>
+                <p>Review pending friend requests.</p>
+              </div>
+              <button className="modal-close" onClick={() => setShowFriendRequestsModal(false)} aria-label="Close friend requests modal">×</button>
+            </div>
+            <div className="search-modal__body">
+              <div className="search-results__empty">No pending friend requests yet.</div>
+            </div>
+          </div>
+        </>
+      )}
+      */}
           
     </div>
   );
