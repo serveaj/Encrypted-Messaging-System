@@ -257,6 +257,7 @@ const Dashboard = () => {
 
     // Listen for incoming messages from other users
     socket.on('receive_message', (message) => {
+      const senderId = Number(message.senderId);
       // Decryption should go here
       const contentToDisplay = message.content;
 
@@ -267,21 +268,30 @@ const Dashboard = () => {
         time:    new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      // Update the chat list
-      setChats(prev => prev.map(chat => {
-        if (chat.id !== message.senderId) return chat;
-        const isOpen = activeChatRef.current?.id === message.senderId;
-        return {
+      // Update the chat list and move the DM to the top
+      setChats(prev => {
+        const chatIndex = prev.findIndex(chat => !chat.isGroup && chat.id === senderId);
+        if (chatIndex === -1) return prev;
+
+        const chat = prev[chatIndex];
+        const isOpen = activeChatRef.current?.id === senderId;
+        const updatedChat = {
           ...chat,
           messages:        [...chat.messages, newMsg],
           lastMessage:     contentToDisplay,
           lastMessageTime: 'Just now',
           unreadCount:     isOpen ? 0 : (chat.unreadCount || 0) + 1,
         };
-      }));
+
+        return [
+          updatedChat,
+          ...prev.slice(0, chatIndex),
+          ...prev.slice(chatIndex + 1),
+        ];
+      });
 
       setActiveChat(prev => {
-        if (!prev || prev.id !== message.senderId) return prev;
+        if (!prev || prev.id !== senderId) return prev;
         return { ...prev, messages: [...prev.messages, newMsg] };
       });
     });
