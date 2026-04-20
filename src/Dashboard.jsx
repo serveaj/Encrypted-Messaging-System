@@ -330,12 +330,18 @@ const Dashboard = () => {
       setChats(prev => prev.map(chat =>
         chat.id === userId ? { ...chat, status: 'online' } : chat
       ));
+      setActiveChat(prev =>
+        prev && prev.id === userId ? { ...prev, status: 'online' } : prev
+      );
     });
 
     socket.on('user_offline', (userId) => {
       setChats(prev => prev.map(chat =>
         chat.id === userId ? { ...chat, status: 'offline' } : chat
       ));
+      setActiveChat(prev =>
+        prev && prev.id === userId ? { ...prev, status: 'offline' } : prev
+      );
     });
 
     // Listen for a new group being created
@@ -663,7 +669,7 @@ const Dashboard = () => {
         name:            person.name,
         avatar:          getAvatarInitials(person.name),
         avatarUrl:       person.avatar_url || person.avatarUrl || null,
-        status:          'online',
+        status:          person.status || 'offline',
         lastMessage:     'Click to start chatting',
         lastMessageTime: '',
         unreadCount:     0,
@@ -831,7 +837,11 @@ const Dashboard = () => {
               <div className="chat-avatar">{renderAvatar(activeChat.avatar, activeChat.avatarUrl, activeChat.name)}</div>
               <div className="chat-info">
                 <div className="chat-name">{activeChat.name}</div>
-                <div className="chat-status">{activeChat.status}</div>
+                <div
+                  className={`chat-status ${activeChat.status === 'offline' ? 'chat-status--offline' : ''}`}
+                >
+                  {activeChat.status}
+                </div>
               </div>
             </div>
 
@@ -1114,7 +1124,7 @@ const Dashboard = () => {
               <input
                 type="text"
                 className="search-modal__input"
-                placeholder="Enter friend's name"
+                placeholder="Enter friend's username"
                 value={addFriendSearch}
                 onChange={(e) => {
                   setAddFriendSearch(e.target.value);
@@ -1127,11 +1137,11 @@ const Dashboard = () => {
               {addFriendSelected && (
                 <div className="addfriend-preview">
                   <div className="addfriend-preview_avatar">
-                    {addFriendSelected.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
+                    {addFriendSelected.username.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="addfriend-preview_info">
-                    <div className="addfriend-name">{addFriendSelected.name}</div>
-                    <div className="addfriend-status">{addFriendSelected.status || 'offline'}</div>
+                    <div className="addfriend-name">{addFriendSelected.username}</div>
+                    <div className="addfriend-status">{addFriendSelected.name} - {addFriendSelected.status || 'offline'}</div>
                   </div>
                 </div>
               )}
@@ -1139,7 +1149,7 @@ const Dashboard = () => {
               {/*Results */}
               <div className="search-results">
                 {users
-                  .filter(u => u.name.toLowerCase().includes(addFriendSearch.toLowerCase()))
+                  .filter(u => u.username.toLowerCase().includes(addFriendSearch.toLowerCase()))
                   .map((u) => ( // renamed to 'u' to avoid shadowing the logged-in 'user'
                   <button
                     key={u.id}
@@ -1147,11 +1157,11 @@ const Dashboard = () => {
                     onClick={() => setAddFriendSelected(u)}
                   >
                     <div className="search-result__avatar">
-                      {u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
+                      {u.username.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="search-result__info">
-                      <div className="search-result__name">{u.name}</div>
-                      <div className="search-result__meta">{u.status || 'offline'}</div>
+                      <div className="search-result__name">{u.username}</div>
+                      <div className="search-result__meta">{u.name} {u.status ? `- ${u.status}` : ''}</div>
                     </div>
                   </button>
                 ))}

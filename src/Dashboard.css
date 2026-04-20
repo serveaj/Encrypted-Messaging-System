@@ -412,6 +412,14 @@
   color: #34d399;
 }
 
+.dashboard-container.dark .chat-status--offline {
+  color: #f87171;
+}
+
+.dashboard-container.dark .chat-status--offline::before {
+  background: #f87171;
+}
+
 .dashboard-container.dark .messages-container {
   background:
     radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
@@ -1212,6 +1220,14 @@
   background: #27ae60;
   border-radius: 50%;
   margin-right: 5px;
+}
+
+.chat-status--offline {
+  color: #e74c3c;
+}
+
+.chat-status--offline::before {
+  background: #e74c3c;
 }
 
 /* Chat header actions (buttons) */
