@@ -70,7 +70,20 @@ const initDB = async () => {
     )
   `);
 
-  console.log('[DB] Tables ready: users, messages, groups, group_members, group_messages, contacts.');
+  // Friend requests table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS friend_requests (
+      id         SERIAL PRIMARY KEY,
+      sender_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,   -- who sent the request
+      receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- who receives the request
+      status     VARCHAR(20) DEFAULT 'pending',                             -- pending, accepted, rejected
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(sender_id, receiver_id)                                        -- only one pending request per pair
+    )
+  `);
+
+  console.log('[DB] Tables ready: users, messages, groups, group_members, group_messages, contacts, friend_requests.');
 };
 
 // Run initDB when the server starts

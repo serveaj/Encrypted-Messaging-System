@@ -64,6 +64,9 @@ const Dashboard = () => {
   const [showAddFriendModal , setShowAddFriendModal] = useState(false); // For the "Add Friend" modal when clicking that option in settings
   const [addFriendSearch, setAddFriendSearch] = useState(''); // For searching friends in the "Add Friend" modal
   const [addFriendSelected, setAddFriendSelected] = useState(null); // For selecting a friend in the "Add Friend" modal
+  const [pendingFriendRequests, setPendingFriendRequests] = useState([]); // Array of incoming friend requests
+  const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false); // Show/hide the friend requests modal
+  const [currentTime, setCurrentTime] = useState(new Date()); // For updating timestamps every minute
 
   const settingsMenuRef = useRef(null);
   const newMenuRef = useRef(null); // ref for the "+ New" dropdown menu to handle clicks outside of it
@@ -76,6 +79,29 @@ const Dashboard = () => {
     .filter(e => e.group?.includes(activeCategory))
     .filter(e => e.annotation?.toLowerCase().includes(emojiSearch.toLowerCase())
       || e.tags?.toLowerCase().includes(emojiSearch.toLowerCase()));
+
+  // Function to format time based on elapsed time since message
+  const formatTimeSince = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const messageTime = new Date(timestamp);
+    const now = currentTime;
+    const elapsedMs = now - messageTime;
+    const elapsedSeconds = Math.floor(elapsedMs / 1000);
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+    const elapsedHours = Math.floor(elapsedMinutes / 60);
+    
+    if (elapsedSeconds < 60) {
+      return 'Just now';
+    } else if (elapsedMinutes < 60) {
+      return `${elapsedMinutes}m`;
+    } else if (elapsedHours < 12) {
+      return `${elapsedHours}h`;
+    } else {
+      // Show time in 12-hour format (e.g., "03:12 AM")
+      return messageTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+  };
 
   // emojis categories
   const emojiCategories = [
@@ -127,6 +153,14 @@ const Dashboard = () => {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
+  // Update currentTime every minute to refresh timestamps
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // 60 seconds
+    return () => clearInterval(interval);
+  }, []);
+
   // Scrolls the chat window to the bottom
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
@@ -166,16 +200,16 @@ const Dashboard = () => {
 
           const chatList = contactsData.success
             ? contactsData.contacts.map(u => ({
-                id:              u.id,
-                name:            u.name,
-                username:        u.username,
-                avatar:          u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-                status:          'offline',
-                lastMessage:     'Click to start chatting',
-                lastMessageTime: '',
-                unreadCount:     0,
-                messages:        [],
-                members:         [user.name, u.name],
+                id:                   u.id,
+                name:                 u.name,
+                username:             u.username,
+                avatar:               u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+                status:               'offline',
+                lastMessage:          'Click to start chatting',
+                lastMessageTimestamp: null,
+                unreadCount:          0,
+                messages:             [],
+                members:              [user.name, u.name],
               }))
             : [];
 
@@ -189,8 +223,8 @@ const Dashboard = () => {
           if (previewsData.success) {
             for (const p of previewsData.previews) {
               previewMap[p.other_id] = {
-                lastMessage:     p.content,
-                lastMessageTime: new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                lastMessage:          p.content,
+                lastMessageTimestamp: new Date(p.created_at),
               };
             }
           }
@@ -200,11 +234,21 @@ const Dashboard = () => {
           const onlineData = await onlineRes.json();
           const onlineIds = new Set(onlineData.success ? onlineData.onlineUserIds : []);
 
+          const usersWithStatus = data.users
+            .filter(u => u.id !== user.id)
+            .map(u => ({
+              ...u,
+              status: onlineIds.has(u.id) ? 'online' : 'offline'
+            }));
+
+        setUsers(usersWithStatus);
+
           // Apply previews and online status to each chat
           const chatListWithPreviews = chatList.map(chat => ({
             ...chat,
             ...(previewMap[chat.id] || {}),
             status: onlineIds.has(chat.id) ? 'online' : 'offline',
+            unreadCount: window.__unreadMap?.[chat.id] ?? 0,
           }));
 
           // Also load any groups this user belongs to
@@ -216,25 +260,30 @@ const Dashboard = () => {
           let groupChats = [];
           if (groupData.success) {
             groupChats = groupData.groups.map(g => ({
-              id:              `group_${g.id}`,
-              groupId:         g.id,
-              name:            g.name,
-              isGroup:         true,
-              avatar:          g.name[0]?.toUpperCase() || 'G',
-              status:          `${g.member_ids.length} members`,
-              lastMessage:     g.last_message
-                                 ? `${g.last_message_sender}: ${g.last_message}`
-                                 : 'Click to view messages',
-              lastMessageTime: g.last_message_at
-                                 ? new Date(g.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                 : '',
-              unreadCount:     0,
-              messages:        [],
-              members:         g.member_ids,
+              id:                   `group_${g.id}`,
+              groupId:              g.id,
+              name:                 g.name,
+              isGroup:              true,
+              avatar:               g.name[0]?.toUpperCase() || 'G',
+              status:               `${g.member_ids.length} members`,
+              lastMessage:          g.last_message
+                                    ? `${g.last_message_sender}: ${g.last_message}`
+                                    : 'Click to view messages',
+              lastMessageTimestamp: g.last_message_at ? new Date(g.last_message_at) : null,
+              unreadCount:          window.__unreadMap?.[`group_${g.id}`] ?? 0,
+              messages:             [],
+              members:              g.member_ids,
             }));
           }
 
-          setChats([...chatListWithPreviews, ...groupChats]);
+          // Sort chats by most recent first
+          const sortedChats = [...chatListWithPreviews, ...groupChats].sort((a, b) => {
+            const timeA = a.lastMessageTimestamp ? new Date(a.lastMessageTimestamp).getTime() : 0;
+            const timeB = b.lastMessageTimestamp ? new Date(b.lastMessageTimestamp).getTime() : 0;
+            return timeB - timeA; // Descending order (most recent first)
+          });
+
+          setChats(sortedChats);
         }
       } catch (err) {
         console.error('[Dashboard] Failed to load users:', err);
@@ -242,7 +291,52 @@ const Dashboard = () => {
     };
 
     if (user) loadUsers();
+
+    // Try to restore unread counts from localStorage
+    const savedUnreadState = localStorage.getItem(`chats_unread_${user?.id}`);
+    if (savedUnreadState) {
+      const unreadMap = JSON.parse(savedUnreadState);
+      // This will be merged after the API call completes
+      // Store in a ref to merge after loadUsers completes
+      window.__unreadMap = unreadMap;
+    }
   }, [user]);
+
+  // Load pending friend requests
+  useEffect(() => {
+    if (!user) return;
+
+    const loadPendingRequests = async () => {
+      const token = localStorage.getItem('token');
+      try {
+        const response = await fetch(`${API_URL}/api/contacts/requests/pending`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const data = await response.json();
+
+        if (data.success) {
+          setPendingFriendRequests(data.requests);
+        }
+      } catch (err) {
+        console.error('[Dashboard] Failed to load pending friend requests:', err);
+      }
+    };
+
+    if (user) loadPendingRequests();
+  }, [user]);
+
+  // Save unread counts to localStorage whenever chats change
+  useEffect(() => {
+    if (chats.length > 0 && user) {
+      const unreadMap = {};
+      chats.forEach(chat => {
+        if (chat.unreadCount > 0) {
+          unreadMap[chat.id] = chat.unreadCount;
+        }
+      });
+      localStorage.setItem(`chats_unread_${user.id}`, JSON.stringify(unreadMap));
+    }
+  }, [chats, user]);
 
   // Connect to Socket.io
   useEffect(() => {
@@ -267,18 +361,24 @@ const Dashboard = () => {
         time:    new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      // Update the chat list
-      setChats(prev => prev.map(chat => {
-        if (chat.id !== message.senderId) return chat;
+      // Update the chat list and move the chat to the top
+      setChats(prev => {
+        const chatIndex = prev.findIndex(chat => chat.id === message.senderId);
+        if (chatIndex === -1) return prev; // Chat doesn't exist, skip
+        
         const isOpen = activeChatRef.current?.id === message.senderId;
-        return {
-          ...chat,
-          messages:        [...chat.messages, newMsg],
-          lastMessage:     contentToDisplay,
-          lastMessageTime: 'Just now',
-          unreadCount:     isOpen ? 0 : (chat.unreadCount || 0) + 1,
+        const updatedChat = {
+          ...prev[chatIndex],
+          messages:             [...prev[chatIndex].messages, newMsg],
+          lastMessage:          contentToDisplay,
+          lastMessageTimestamp: new Date(message.createdAt),
+          unreadCount:          isOpen ? 0 : (prev[chatIndex].unreadCount || 0) + 1,
         };
-      }));
+        
+        // Remove chat from current position and add to top
+        const otherChats = prev.filter((_, i) => i !== chatIndex);
+        return [updatedChat, ...otherChats];
+      });
 
       setActiveChat(prev => {
         if (!prev || prev.id !== message.senderId) return prev;
@@ -303,17 +403,17 @@ const Dashboard = () => {
     socket.on('group_created', (group) => {
       const groupChatId = `group_${group.id}`;
       const newGroupChat = {
-        id:              groupChatId,
-        groupId:         group.id,       
-        name:            group.name,
-        isGroup:         true,
-        avatar:          group.name[0]?.toUpperCase() || 'G',
-        status:          `${group.memberIds.length} members`,
-        lastMessage:     'Group created',
-        lastMessageTime: 'Just now',
-        unreadCount:     0,
-        messages:        [],
-        members:         group.memberIds,
+        id:                   groupChatId,
+        groupId:              group.id,       
+        name:                 group.name,
+        isGroup:              true,
+        avatar:               group.name[0]?.toUpperCase() || 'G',
+        status:               `${group.memberIds.length} members`,
+        lastMessage:          'Group created',
+        lastMessageTimestamp: new Date(),
+        unreadCount:          0,
+        messages:             [],
+        members:              group.memberIds,
       };
 
       // Add to chat list
@@ -336,20 +436,70 @@ const Dashboard = () => {
 
       const isOpen = activeChatRef.current?.id === groupChatId;
 
-      setChats(prev => prev.map(chat => {
-        if (chat.id !== groupChatId) return chat;
-        return {
-          ...chat,
-          messages:        [...chat.messages, newMsg],
-          lastMessage:     `${message.senderName}: ${message.content}`,
-          lastMessageTime: 'Just now',
-          unreadCount:     isOpen ? 0 : (chat.unreadCount || 0) + 1,
+      // Update the chat list and move group chat to the top
+      setChats(prev => {
+        const chatIndex = prev.findIndex(chat => chat.id === groupChatId);
+        if (chatIndex === -1) return prev; // Chat doesn't exist, skip
+        
+        const updatedChat = {
+          ...prev[chatIndex],
+          messages:             [...prev[chatIndex].messages, newMsg],
+          lastMessage:          `${message.senderName}: ${message.content}`,
+          lastMessageTimestamp: new Date(message.createdAt),
+          unreadCount:          isOpen ? 0 : (prev[chatIndex].unreadCount || 0) + 1,
         };
-      }));
+        
+        // Remove chat from current position and add to top
+        const otherChats = prev.filter((_, i) => i !== chatIndex);
+        return [updatedChat, ...otherChats];
+      });
 
       setActiveChat(prev => {
         if (!prev || prev.id !== groupChatId) return prev;
         return { ...prev, messages: [...prev.messages, newMsg] };
+      });
+    });
+
+    // Listen for incoming friend requests
+    socket.on('friend_request_received', (request) => {
+      setPendingFriendRequests(prev => {
+        // Check if this request is already in the list
+        if (prev.find(r => r.request_id === request.request_id)) {
+          return prev;
+        }
+        return [request, ...prev];
+      });
+    });
+
+    // Listen for accepted friend requests
+    socket.on('friend_request_accepted', (data) => {
+      console.log('[Dashboard] Received friend_request_accepted event:', data);
+      const { contact } = data;
+      if (!contact) {
+        console.error('[Dashboard] No contact in friend_request_accepted data');
+        return;
+      }
+      // Add the new contact to the chats list
+      const newChat = {
+        id:                   contact.id,
+        name:                 contact.name,
+        avatar:               contact.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+        status:               'online', // Assume online since they just accepted
+        lastMessage:          'Click to start chatting',
+        lastMessageTimestamp: null,
+        unreadCount:          0,
+        messages:             [],
+        members:              [user?.name || 'You', contact.name],
+      };
+
+      setChats(prev => {
+        // Check if already exists
+        if (prev.find(c => c.id === contact.id)) {
+          console.log('[Dashboard] Contact already exists in chats');
+          return prev;
+        }
+        console.log('[Dashboard] Adding new contact to chats');
+        return [newChat, ...prev];
       });
     });
 
@@ -464,9 +614,9 @@ const Dashboard = () => {
 
     const updatedChat = {
       ...activeChat,
-      messages:        [...activeChat.messages, message],
-      lastMessage:     content,
-      lastMessageTime: 'Just now',
+      messages:             [...activeChat.messages, message],
+      lastMessage:          content,
+      lastMessageTimestamp: new Date(),
     };
 
     setActiveChat(updatedChat);
@@ -500,7 +650,7 @@ const Dashboard = () => {
         .slice(0, 3),
       status: `${members.length} member${members.length === 1 ? '' : 's'}`,
       lastMessage: 'New conversation started',
-      lastMessageTime: 'Just now',
+      lastMessageTimestamp: new Date(),
       unreadCount: 0,
       messages: [
         { id: `${nextIdRef.current}-seed`, content: 'Say hello to everyone!', type: 'received', time: 'Now' }
@@ -535,6 +685,65 @@ const Dashboard = () => {
     setAddFriendSearch('');
     setAddFriendSelected(null);
     setShowAddFriendModal(true); // Open the "Add Friend" modal
+  };
+
+  const handleAcceptFriendRequest = async (request) => {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_URL}/api/contacts/requests/${request.request_id}/accept`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Remove from pending requests
+        setPendingFriendRequests(prev => prev.filter(r => r.request_id !== request.request_id));
+
+        // Add to the sidebar if not already there
+        const existingChat = chats.find(c => !c.isGroup && c.id === request.sender_id);
+        if (!existingChat) {
+          const newChat = {
+            id:                   request.sender_id,
+            name:                 request.name,
+            avatar:               request.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+            status:               'online',
+            lastMessage:          'Click to start chatting',
+            lastMessageTimestamp: null,
+            unreadCount:          0,
+            messages:             [],
+            members:              [user?.name || 'You', request.name],
+          };
+          setChats(prev => [newChat, ...prev]);
+        }
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to accept friend request:', err);
+    }
+  };
+
+  const handleRejectFriendRequest = async (request) => {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_URL}/api/contacts/requests/${request.request_id}/reject`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Remove from pending requests
+        setPendingFriendRequests(prev => prev.filter(r => r.request_id !== request.request_id));
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to reject friend request:', err);
+    }
   };
 
   const handleCreateGroupFromSelection = () => {
@@ -615,15 +824,15 @@ const Dashboard = () => {
       setActiveChat(existingChat);
     } else {
       const newChat = {
-        id:              person.id,
-        name:            person.name,
-        avatar:          person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-        status:          'online',
-        lastMessage:     'Click to start chatting',
-        lastMessageTime: '',
-        unreadCount:     0,
-        messages:        [],
-        members:         [user?.name || 'You', person.name],
+        id:                   person.id,
+        name:                 person.name,
+        avatar:               person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
+        status:               'online',
+        lastMessage:          'Click to start chatting',
+        lastMessageTimestamp: null,
+        unreadCount:          0,
+        messages:             [],
+        members:              [user?.name || 'You', person.name],
       };
       setChats(prev => [newChat, ...prev]);
       setActiveChat(newChat);
@@ -642,7 +851,10 @@ const Dashboard = () => {
   const emptyStateText = activeConversationTab === 'direct'
     ? 'No direct messages yet.'
     : 'No group conversations yet.';
-  const filteredFriends = users.filter(person =>
+  
+  // Filter only actual friends/contacts from chats, excluding groups
+  const contactChats = chats.filter(chat => !chat.isGroup);
+  const filteredFriends = contactChats.filter(person =>
     person.name.toLowerCase().includes(friendSearch.toLowerCase())
   );
 
@@ -657,11 +869,22 @@ const Dashboard = () => {
               {user?.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
             </div>
             <div className="user-details">
-              <h3>{displayName || user?.name}</h3>
+              <h3 title={displayName || user?.name} data-tooltip={displayName || user?.name}>{displayName || user?.name}</h3>
               <span className="user-status">Online</span>
             </div>
           </div>
           <div className="settings-wrap" ref={settingsMenuRef}>
+            <button
+              className="friend-requests-btn"
+              aria-label="Friend requests"
+              onClick={() => setShowFriendRequestsModal(true)}
+              title="Friend Requests"
+            >
+              🔔
+              {pendingFriendRequests.length > 0 && (
+                <span className="friend-requests-badge">{pendingFriendRequests.length}</span>
+              )}
+            </button>
             <button
               className="settings-btn"
               aria-haspopup="true"
@@ -673,7 +896,6 @@ const Dashboard = () => {
             {showSettingsMenu && (
               <div className="settings-dropdown">
                 <button onClick={() => { setShowSettingsMenu(false); setShowSettingsModal(true); }}>Settings</button>
-                <button onClick={() => { setShowSettingsMenu(false); handleAddFriend(); }}>Add Friend</button>
                 <button className="dropdown-logout" onClick={() => { setShowSettingsMenu(false); logout(); }}>Logout</button>
               </div>
             )}
@@ -741,7 +963,10 @@ const Dashboard = () => {
                     <div className="chat-preview">{chat.lastMessage}</div>
                   </div>
                   <div className="chat-meta">
-                    <div className="chat-time">{chat.lastMessageTime}</div>
+                    <div className={`chat-time ${chat.unreadCount > 0 ? 'unread' : ''}`}>
+                      {formatTimeSince(chat.lastMessageTimestamp)}
+                      {chat.unreadCount > 0 && <span className="unread-dot"></span>}
+                    </div>
                     {chat.unreadCount > 0 && (
                       <div className="unread-count">{chat.unreadCount}</div>
                     )}
@@ -1093,7 +1318,7 @@ const Dashboard = () => {
               {/*Results */}
               <div className="search-results">
                 {users
-                  .filter(u => u.name.toLowerCase().includes(addFriendSearch.toLowerCase()))
+                  .filter(u => u.username.toLowerCase().includes(addFriendSearch.toLowerCase()))
                   .map((u) => ( // renamed to 'u' to avoid shadowing the logged-in 'user'
                   <button
                     key={u.id}
@@ -1104,7 +1329,8 @@ const Dashboard = () => {
                       {u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
                     </div>
                     <div className="search-result__info">
-                      <div className="search-result__name">{u.name}</div>
+                      <div className="search-result__name">{u.username}</div>
+                      <div className="search-result__meta">{u.name}</div>
                       <div className="search-result__meta">{u.status || 'offline'}</div>
                     </div>
                   </button>
@@ -1117,36 +1343,13 @@ const Dashboard = () => {
                 disabled={!addFriendSelected}
                 onClick={async () => {
                   const person = addFriendSelected;
-                  const token = localStorage.getItem('token');
 
-                  // Save the contact to the database so it persists after refresh
-                  await fetch(`${API_URL}/api/contacts`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({ contactId: person.id }),
-                  });
-
-                  // Add to the sidebar if not already there
-                  const existingChat = chats.find(c => !c.isGroup && c.id === person.id);
-                  if (!existingChat) {
-                    const newChat = {
-                      id:              person.id,
-                      name:            person.name,
-                      avatar:          person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-                      status:          'online',
-                      lastMessage:     'Click to start chatting',
-                      lastMessageTime: '',
-                      unreadCount:     0,
-                      messages:        [],
-                      members:         [user?.name || 'You', person.name],
-                    };
-                    setChats(prev => [newChat, ...prev]);
-                    setActiveChat(newChat);
-                  } else {
-                    setActiveChat(existingChat);
+                  // Send friend request via Socket.io
+                  if (socketRef.current) {
+                    socketRef.current.emit('send_friend_request', {
+                      senderId: user.id,
+                      receiverId: person.id,
+                    });
                   }
 
                   setShowAddFriendModal(false);
@@ -1154,13 +1357,68 @@ const Dashboard = () => {
                   setAddFriendSelected(null);
                 }}
               >
-                Add Friend
+                Send Request
               </button>
             </div>
             </div>
           </div>
         </>
       )}  
+      
+      {/* Friend Requests Modal */}
+      {showFriendRequestsModal && (
+        <>
+          <div className="modal-backdrop" onClick={() => setShowFriendRequestsModal(false)} />
+          <div className="friend-requests-modal" role="dialog" aria-modal="true">
+            <div className="friend-requests-modal__header">
+              <h4>Friend Requests</h4>
+              <button 
+                className="modal-close" 
+                onClick={() => setShowFriendRequestsModal(false)}
+                aria-label="Close friend requests modal"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="friend-requests-modal__body">
+              {pendingFriendRequests.length > 0 ? (
+                <div className="friend-requests-list">
+                  {pendingFriendRequests.map(request => (
+                    <div key={request.request_id} className="friend-request-item">
+                      <div className="request-avatar">
+                        {request.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
+                      </div>
+                      <div className="request-info">
+                        <div className="request-name">{request.name}</div>
+                        <div className="request-username">@{request.username}</div>
+                      </div>
+                      <div className="request-actions">
+                        <button 
+                          className="request-accept-btn"
+                          onClick={() => handleAcceptFriendRequest(request)}
+                        >
+                          Accept
+                        </button>
+                        <button 
+                          className="request-reject-btn"
+                          onClick={() => handleRejectFriendRequest(request)}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="friend-requests-empty">
+                  <p>No friend requests at the moment.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
           
     </div>
   );

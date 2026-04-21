@@ -52,6 +52,10 @@ const io = new Server(server, {
 // Online users list
 const onlineUsers = {};
 
+// Make io and onlineUsers available to routes
+app.set('io', io);
+app.set('onlineUsers', onlineUsers);
+
 io.on('connection', (socket) => {
   console.log(`[Socket.io] New connection: ${socket.id}`);
 
@@ -190,6 +194,66 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('[Socket.io] send_group_message error:', err.message);
       socket.emit('message_error', { message: 'Failed to send group message.' });
+    }
+  });
+
+  // Socket event for sending a friend request
+  socket.on('send_friend_request', async ({ senderId, receiverId }) => {
+    try {
+      // Get sender info
+      const senderResult = await pool.query(
+        'SELECT id, username, name, avatar_url FROM users WHERE id = $1',
+        [senderId]
+      );
+
+      if (senderResult.rows.length === 0) {
+        socket.emit('friend_request_error', { message: 'Sender not found.' });
+        return;
+      }
+
+      const sender = senderResult.rows[0];
+
+      // Create the friend request in DB
+      const requestResult = await pool.query(
+        `INSERT INTO friend_requests (sender_id, receiver_id, status)
+         VALUES ($1, $2, 'pending')
+         ON CONFLICT DO NOTHING
+         RETURNING id, sender_id, receiver_id, status, created_at`,
+        [senderId, receiverId]
+      );
+
+      if (requestResult.rows.length === 0) {
+        socket.emit('friend_request_error', { message: 'Request already pending or user is already a contact.' });
+        return;
+      }
+
+      const request = requestResult.rows[0];
+
+      // Notify the receiver if they're online
+      const receiverSocketId = onlineUsers[receiverId];
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit('friend_request_received', {
+          request_id: request.id,
+          sender_id: sender.id,
+          username: sender.username,
+          name: sender.name,
+          avatar_url: sender.avatar_url,
+          created_at: request.created_at,
+        });
+        console.log(`[Socket.io] Friend request sent from ${senderId} to ${receiverId}`);
+      } else {
+        console.log(`[Socket.io] User ${receiverId} is offline — friend request saved`);
+      }
+
+      // Confirm to sender
+      socket.emit('friend_request_sent', { 
+        requestId: request.id,
+        message: 'Friend request sent.' 
+      });
+
+    } catch (err) {
+      console.error('[Socket.io] send_friend_request error:', err.message);
+      socket.emit('friend_request_error', { message: 'Failed to send friend request.' });
     }
   });
 

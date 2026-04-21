@@ -23,9 +23,9 @@
 
 /* Sidebar (left panel) */
 .sidebar {
-  flex: 0 0 clamp(240px, 26vw, 320px);  /* keep sidebar visible; prevent flex shrink */
-  width: clamp(240px, 26vw, 320px);
-  min-width: 240px;
+  flex: 0 0 350px;
+  width: 350px;
+  min-width: 350px;
   background: var(--gradient-surface);
   border-right: 1px solid #e9ecef;
   display: flex;
@@ -54,6 +54,12 @@
   display: flex;
   align-items: center;
   margin-bottom: 15px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.user-info {
+  gap: 12px;
 }
 
 /* User avatar image */
@@ -76,6 +82,44 @@
 .user-details h3 {
   margin: 0 0 5px 0;
   font-size: 1.1rem;
+  position: relative;
+  cursor: help;
+}
+
+.user-details h3:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: -35px;
+  left: 0;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-weight: normal;
+}
+
+.user-details {
+  flex: 1 1 auto;
+  min-width: 0; /* allow text-overflow to work inside flex */
+}
+
+.user-details h3 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Shift the displayed name/online status and the bell/settings group to the right */
+.user-details {
+  margin-left: 10px;
+}
+
+.settings-wrap {
+  margin-left: 10px;
 }
 
 /* User online status */
@@ -118,13 +162,17 @@
 
 .settings-wrap {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
 }
 
 .settings-btn {
   border: 1px solid rgba(255, 255, 255, 0.3);
+  border-left: none;
   background: rgba(255, 255, 255, 0.08);
   color: white;
-  border-radius: 10px;
+  border-radius: 0 10px 10px 0;
   width: 40px;
   height: 40px;
   display: grid;
@@ -137,6 +185,46 @@
 .settings-btn:hover {
   background: rgba(255, 255, 255, 0.14);
   transform: translateY(-1px);
+}
+
+/* Friend requests bell button */
+.friend-requests-btn {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-right: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  border-radius: 10px 0 0 10px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.friend-requests-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
+}
+
+/* Notification badge for friend requests */
+.friend-requests-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #e74c3c;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: bold;
+  border: 2px solid #2c3e50;
 }
 
 .settings-dropdown {
@@ -392,6 +480,10 @@
 .dashboard-container.dark .chat-preview,
 .dashboard-container.dark .chat-time {
   color: #9ca3af;
+}
+
+.dashboard-container.dark .chat-time.unread {
+  color: #60a5fa;
 }
 
 .dashboard-container.dark .main-content {
@@ -1140,6 +1232,23 @@
   justify-content: center;
   font-size: 0.7rem;
   font-weight: bold;
+}
+
+/* Unread chat time (blue text) */
+.chat-time.unread {
+  color: #3498db;
+  font-weight: 500;
+}
+
+/* Unread message dot indicator */
+.unread-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: #3498db;
+  border-radius: 50%;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 /* Main content (right side) */
@@ -1978,4 +2087,181 @@
   100% {
     background-color: transparent;
   }
+}
+
+/* Friend Requests Modal */
+.friend-requests-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, 92vw);
+  background: #fff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 80vh;
+}
+
+.friend-requests-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2);
+  border-bottom: 1px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.friend-requests-modal__header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.friend-requests-modal__body {
+  overflow-y: auto;
+  flex: 1;
+  padding: var(--space-2);
+}
+
+.friend-requests-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.friend-request-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #e9ecef;
+  border-radius: var(--radius-md);
+  background: #f9fafb;
+  transition: all 0.2s ease;
+}
+
+.friend-request-item:hover {
+  background: #f0f2f5;
+  border-color: #dce0e4;
+}
+
+.request-avatar {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.request-info {
+  flex: 1;
+}
+
+.request-name {
+  font-weight: 500;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.request-username {
+  font-size: 0.85rem;
+  color: #868e96;
+  margin: 2px 0 0 0;
+}
+
+.request-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.request-accept-btn,
+.request-reject-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.request-accept-btn {
+  background: #27ae60;
+  color: white;
+}
+
+.request-accept-btn:hover {
+  background: #229954;
+  box-shadow: 0 2px 8px rgba(39, 174, 96, 0.2);
+}
+
+.request-reject-btn {
+  background: #e74c3c;
+  color: white;
+}
+
+.request-reject-btn:hover {
+  background: #c0392b;
+  box-shadow: 0 2px 8px rgba(231, 76, 60, 0.2);
+}
+
+.friend-requests-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  color: #868e96;
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.friend-requests-empty p {
+  margin: 0;
+}
+
+/* Dark mode friend requests modal */
+.dashboard-container.dark .friend-requests-modal {
+  background: #1e1e1e;
+}
+
+.dashboard-container.dark .friend-requests-modal__header {
+  background: #2d2d2d;
+  border-bottom-color: #3d3d3d;
+}
+
+.dashboard-container.dark .friend-requests-modal__header h4 {
+  color: #e0e0e0;
+}
+
+.dashboard-container.dark .friend-request-item {
+  background: #2d2d2d;
+  border-color: #3d3d3d;
+}
+
+.dashboard-container.dark .friend-request-item:hover {
+  background: #3d3d3d;
+  border-color: #4d4d4d;
+}
+
+.dashboard-container.dark .request-name {
+  color: #e0e0e0;
+}
+
+.dashboard-container.dark .request-username {
+  color: #a0a0a0;
+}
+
+.dashboard-container.dark .friend-requests-empty {
+  color: #a0a0a0;
 }
