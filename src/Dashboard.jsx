@@ -55,6 +55,7 @@ const Dashboard = () => {
   const [showSearchModal, setShowSearchModal] = useState(false); // For the search modal
   const [friendSearch, setFriendSearch] = useState(''); // For searching friends in the search modal
   const [displayName, setDisplayName] = useState(user?.name || '');
+  const [tempDisplayName, setTempDisplayName] = useState(displayName);
   // Load dark mode preference from localStorage so it persists after refresh
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('darkMode') === 'true';
@@ -153,11 +154,11 @@ const Dashboard = () => {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
-  // Update currentTime every minute to refresh timestamps
+  // Update currentTime every second so minute-boundary labels update without refresh
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(new Date());
-    }, 60000); // 60 seconds
+    }, 1000); // 1 second
     return () => clearInterval(interval);
   }, []);
 
@@ -204,7 +205,7 @@ const Dashboard = () => {
                 name:                 u.name,
                 username:             u.username,
                 avatar:               u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-                status:               'offline',
+                status:               'Offline',
                 lastMessage:          'Click to start chatting',
                 lastMessageTimestamp: null,
                 unreadCount:          0,
@@ -238,7 +239,7 @@ const Dashboard = () => {
             .filter(u => u.id !== user.id)
             .map(u => ({
               ...u,
-              status: onlineIds.has(u.id) ? 'online' : 'offline'
+              status: onlineIds.has(u.id) ? 'Online' : 'Offline'
             }));
 
         setUsers(usersWithStatus);
@@ -247,7 +248,7 @@ const Dashboard = () => {
           const chatListWithPreviews = chatList.map(chat => ({
             ...chat,
             ...(previewMap[chat.id] || {}),
-            status: onlineIds.has(chat.id) ? 'online' : 'offline',
+            status: onlineIds.has(chat.id) ? 'Online' : 'Offline',
             unreadCount: window.__unreadMap?.[chat.id] ?? 0,
           }));
 
@@ -389,13 +390,13 @@ const Dashboard = () => {
     // Listen for user online/offline changes
     socket.on('user_online', (userId) => {
       setChats(prev => prev.map(chat =>
-        chat.id === userId ? { ...chat, status: 'online' } : chat
+        chat.id === userId ? { ...chat, status: 'Online' } : chat
       ));
     });
 
     socket.on('user_offline', (userId) => {
       setChats(prev => prev.map(chat =>
-        chat.id === userId ? { ...chat, status: 'offline' } : chat
+        chat.id === userId ? { ...chat, status: 'Offline' } : chat
       ));
     });
 
@@ -484,7 +485,7 @@ const Dashboard = () => {
         id:                   contact.id,
         name:                 contact.name,
         avatar:               contact.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-        status:               'online', // Assume online since they just accepted
+        status:               'Online', // Assume online since they just accepted
         lastMessage:          'Click to start chatting',
         lastMessageTimestamp: null,
         unreadCount:          0,
@@ -710,7 +711,7 @@ const Dashboard = () => {
             id:                   request.sender_id,
             name:                 request.name,
             avatar:               request.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-            status:               'online',
+            status:               'Online',
             lastMessage:          'Click to start chatting',
             lastMessageTimestamp: null,
             unreadCount:          0,
@@ -772,7 +773,7 @@ const Dashboard = () => {
 
   // Save new display name
   const handleSaveName = async () => {
-    if (!displayName.trim()) return;
+    if (!tempDisplayName.trim()) return;
 
     try {
       const token = localStorage.getItem('token');
@@ -782,12 +783,13 @@ const Dashboard = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ name: displayName.trim() }),
+        body: JSON.stringify({ name: tempDisplayName.trim() }),
       });
 
       const data = await response.json();
 
       if (data.success) {
+        setDisplayName(tempDisplayName);
         updateUser(data.user);      
         setShowSettingsModal(false);
       } else {
@@ -827,7 +829,7 @@ const Dashboard = () => {
         id:                   person.id,
         name:                 person.name,
         avatar:               person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2),
-        status:               'online',
+        status:               'Online',
         lastMessage:          'Click to start chatting',
         lastMessageTimestamp: null,
         unreadCount:          0,
@@ -857,6 +859,15 @@ const Dashboard = () => {
   const filteredFriends = contactChats.filter(person =>
     person.name.toLowerCase().includes(friendSearch.toLowerCase())
   );
+
+  // Compute last-seen text for the currently active chat (direct only)
+  const activeLastSeen = activeChat && !activeChat.isGroup && activeChat.status !== 'Online' && activeChat.lastMessageTimestamp
+    ? formatTimeSince(activeChat.lastMessageTimestamp)
+    : null;
+
+  const activeLastSeenTitle = activeChat && activeChat.lastMessageTimestamp
+    ? new Date(activeChat.lastMessageTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+    : '';
 
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark' : ''}`}>
@@ -1010,7 +1021,30 @@ const Dashboard = () => {
               <div className="chat-avatar">{activeChat.avatar}</div>
               <div className="chat-info">
                 <div className="chat-name">{activeChat.name}</div>
-                <div className="chat-status">{activeChat.status}</div>
+                <div className={`chat-status ${activeChat.isGroup ? 'group' : (activeChat.status === 'Online' ? 'online' : 'offline')}`}>
+                {/* Show Online/Offline or "X members" with tooltip */}
+                {activeChat.isGroup ? (
+                  <span 
+                    className="status-text" 
+                    title={activeChat.members?.map(memberId => {
+                      if (memberId === user.id) {
+                        return user.name; // Display current user's name
+                      }
+                      const member = users.find(u => u.id === memberId);
+                      return member?.name || `User ${memberId}`;
+                    }).join(', ') || ''}
+                  >
+                    {activeChat.status}
+                  </span>
+                ) : (
+                  <>
+                    <span className="status-text">{activeChat.status}</span>
+                    {activeChat.status !== 'Online' && activeLastSeen && (
+                      <span className="offline-last-seen" title={activeLastSeenTitle}>· last seen {activeLastSeen}</span>
+                    )}
+                  </>
+                )}
+              </div>
               </div>
             </div>
 
@@ -1148,8 +1182,8 @@ const Dashboard = () => {
                 <span>Display name</span>
                 <input
                   type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
+                  value={tempDisplayName}
+                  onChange={(e) => setTempDisplayName(e.target.value)}
                   placeholder="Your name"
                 />
               </label>
@@ -1168,8 +1202,15 @@ const Dashboard = () => {
             </div>
 
             <div className="settings-modal__footer">
-              <button className="ghost-btn" onClick={() => setShowSettingsModal(false)}>Cancel</button>
-              <button className="primary-btn" onClick={handleSaveName}>Save</button>
+              <button className="ghost-btn" onClick={() => {
+                setTempDisplayName(displayName);
+                setShowSettingsModal(false);
+              }}>Cancel</button>
+              <button className="primary-btn" onClick={() => {
+                setDisplayName(tempDisplayName);
+                handleSaveName();
+                setShowSettingsModal(false);
+              }}>Save</button>
             </div>
           </div>
         </>
@@ -1196,20 +1237,29 @@ const Dashboard = () => {
             </label>
 
             <div className="group-modal__list">
-              {users.map(u => (   // users from API already excludes the logged-in user
-                  <label key={u.id} className="group-row">
-                    <input
-                      type="checkbox"
-                      checked={groupSelection.includes(u.id)}
-                      onChange={() => toggleGroupMember(u.id)}
-                    />
-                    <div className="group-row__avatar">{u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}</div>
-                    <div className="group-row__info">
-                      <div className="group-row__name">{u.name}</div>
-                      <div className="group-row__status">{u.status || 'offline'}</div>
-                    </div>
-                  </label>
-                ))}
+              {users
+                .filter(u => chats.find(c => !c.isGroup && c.id === u.id)) // Only show users that are in chats (friended)
+                .map(u => {
+                  const memberStatus = chats.find(c => c.id === u.id)?.status || 'Offline';
+                  return (
+                    <label key={u.id} className="group-row">
+                      <input
+                        type="checkbox"
+                        checked={groupSelection.includes(u.id)}
+                        onChange={() => toggleGroupMember(u.id)}
+                      />
+                      <div className="group-row__avatar">{u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}</div>
+                      <div className="group-row__info">
+                        <div className="group-row__name">{u.name}</div>
+                        <div className="group-row__status">
+                          <span className={`status-pill ${memberStatus === 'Online' ? 'online' : ''}`}>
+                            {memberStatus}
+                          </span>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
             </div>
 
             <div className="group-modal__footer">
@@ -1260,7 +1310,11 @@ const Dashboard = () => {
                       <div className="search-result__avatar">{person.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}</div>
                       <div className="search-result__info">
                         <div className="search-result__name">{person.name}</div>
-                        <div className="search-result__meta">{person.status || 'offline'}</div>
+                        <div className="search-result__meta">
+                          <span className={`status-pill ${person.status === 'Online' ? 'online' : ''}`}>
+                            {person.status || 'Offline'}
+                          </span>
+                        </div>
                       </div>
                     </button>
                   ))
@@ -1310,33 +1364,42 @@ const Dashboard = () => {
                   </div>
                   <div className="addfriend-preview_info">
                     <div className="addfriend-name">{addFriendSelected.name}</div>
-                    <div className="addfriend-status">{addFriendSelected.status || 'offline'}</div>
+                    <div className="addfriend-status">
+                      <span className={`status-pill ${chats.find(c => c.id === addFriendSelected.id)?.status === 'Online' ? 'online' : ''}`}>
+                        {chats.find(c => c.id === addFriendSelected.id)?.status || 'Offline'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
 
               {/*Results */}
-              <div className="search-results">
-                {users
-                  .filter(u => u.username.toLowerCase().includes(addFriendSearch.toLowerCase()))
-                  .map((u) => ( // renamed to 'u' to avoid shadowing the logged-in 'user'
-                  <button
-                    key={u.id}
-                    className={`search-result ${addFriendSelected?.id === u.id ? 'active' : ''}`}
-                    onClick={() => setAddFriendSelected(u)}
-                  >
-                    <div className="search-result__avatar">
-                      {u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
-                    </div>
-                    <div className="search-result__info">
-                      <div className="search-result__name">{u.username}</div>
-                      <div className="search-result__meta">{u.name}</div>
-                      <div className="search-result__meta">{u.status || 'offline'}</div>
-                    </div>
-                  </button>
-                ))}
-            </div> 
-
+              {addFriendSearch.trim() && (
+                <div className="search-results">
+                  {users
+                    .filter(u => u.username.toLowerCase().includes(addFriendSearch.toLowerCase()))
+                    .map((u) => ( // renamed to 'u' to avoid shadowing the logged-in 'user'
+                    <button
+                      key={u.id}
+                      className={`search-result ${addFriendSelected?.id === u.id ? 'active' : ''}`}
+                      onClick={() => setAddFriendSelected(u)}
+                    >
+                      <div className="search-result__avatar">
+                        {u.name.split(' ').map(n => n[0]?.toUpperCase()).join('').slice(0, 2)}
+                      </div>
+                      <div className="search-result__info">
+                        <div className="search-result__name">{u.username}</div>
+                        <div className="search-result__meta">{u.name}</div>
+                        <div className="search-result__meta">
+                          <span className={`status-pill ${chats.find(c => c.id === u.id)?.status === 'Online' ? 'online' : ''}`}>
+                            {chats.find(c => c.id === u.id)?.status || 'Offline'}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             <div className="addfriend-modal__footer">
               <button
                 className="addfriend-btn"

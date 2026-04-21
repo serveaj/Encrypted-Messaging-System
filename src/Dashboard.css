@@ -140,6 +140,54 @@
   margin-right: 5px;
 }
 
+/* Small inline status pill used in search results and elsewhere */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #6b7280; /* neutral grey */
+}
+
+.status-pill::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: #9ca3af;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-pill.online {
+  color: #27ae60;
+}
+
+.status-pill.online::before {
+  background: #27ae60;
+}
+
+/* Chat header status: Online (green with dot) or Offline (grey) */
+.chat-status {
+  font-size: 0.85rem;
+  color: #6b7280; /* grey for Offline */
+  display: flex;
+  align-items: center;
+}
+
+.chat-status.online {
+  color: #27ae60;
+}
+
+.chat-status.online::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: #27ae60;
+  border-radius: 50%;
+  margin-right: 6px;
+  display: inline-block;
+}
+
 /* Logout button */
 .logout-btn {
   width: 100%;
@@ -402,6 +450,10 @@
   border-bottom: 1px solid #1f2937;
 }
 
+.dashboard-container.dark .chats-header h3 {
+  color: #ffffff;
+}
+
 .dashboard-container.dark .conversation-tabs {
   background: #111827;
   border-color: #1f2937;
@@ -457,7 +509,11 @@
 .dashboard-container.dark .search-results__empty,
 .dashboard-container.dark .search-result__meta,
 .dashboard-container.dark .search-modal__header p {
-  color: #9ca3af;
+  color: #afa49c;
+}
+
+.dashboard-container.dark .search-result__name {
+  color: #e5e7eb;
 }
 
 .dashboard-container.dark .chat-item {
@@ -598,7 +654,11 @@
 
 .dashboard-container.dark .settings-modal__header,
 .dashboard-container.dark .settings-modal__footer {
-  border-color: #1f2937;
+  border-color: #e9ecef;
+}
+
+.dashboard-container.dark .settings-modal__header h4 {
+  color: #e5e7eb;
 }
 
 .dashboard-container.dark .settings-field input[type="text"],
@@ -1046,7 +1106,7 @@
   gap: 12px;
   padding: 10px;
   border-radius: 12px;
-  background: #f8f9fa
+  background: #e4e4e4;
 }
 
 .addfriend-preview_avatar {
@@ -1070,7 +1130,7 @@
 
 .addfriend-preview_info .status {
   font-size: 0.8rem;
-  color: #7f8c8d;
+  color: #8d827f;
 }
 
 .addfriend-results {
@@ -1099,7 +1159,7 @@
 }
 
 .addfriend-result.active {
-    background: #e3f2fd;
+    background: #fde3e3;
     border-left: 4px solid #3498db;
 }
 
@@ -1119,7 +1179,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 14px 16px;
-    border-bottom: 1px solid #e9ecef;
+    border-bottom: 1px solid #001e3b;
 }
 
 .addfriend-modal__footer {
@@ -1128,6 +1188,10 @@
     align-items: center;
     padding: 12px 16px;
     border-top: 1px solid #e9ecef;
+}
+
+.dashboard-container.dark .addfriend-modal .search-result__name {
+  color: #e0e0e0;
 }
 
 .addfriend-btn {
@@ -1317,27 +1381,63 @@
 /* Chat status (online dot + text) */
 .chat-status {
   font-size: 0.8rem;
-  color: #27ae60;
+  color: #6b7280; /* default grey for Offline */
   display: flex;
   align-items: center;
 }
 
-.chat-status::before {
+.chat-status.online {
+  color: #27ae60;
+}
+
+.chat-status.online::before {
   content: '';
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   background: #27ae60;
   border-radius: 50%;
-  margin-right: 5px;
+  margin-right: 6px;
+  display: inline-block;
 }
 
-.chat-status--offline {
-  color: #e74c3c;
+.chat-status.offline::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: #9ca3af; /* neutral grey dot */
+  border-radius: 50%;
+  margin-right: 6px;
+  display: inline-block;
 }
 
-.chat-status--offline::before {
-  background: #e74c3c;
+/* Dark mode overrides for offline status to ensure contrast */
+.dashboard-container.dark .chat-status.offline {
+  color: #d1d5db; /* light grey for dark backgrounds */
 }
+.dashboard-container.dark .chat-status.offline::before {
+  background: #d1d5db;
+}
+
+/* Dark mode for status-pill used in search */
+.dashboard-container.dark .status-pill {
+  color: #9ca3af;
+}
+.dashboard-container.dark .status-pill::before {
+  background: #d1d5db;
+}
+
+/* Last-seen text shown next to Offline in chat header */
+.offline-last-seen {
+  margin-left: 8px;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.dashboard-container.dark .offline-last-seen {
+  color: #e5e7eb;
+}
+
+/* remove deprecated rule for chat-status--offline */
 
 /* Chat header actions (buttons) */
 .chat-actions {
@@ -2256,36 +2356,85 @@
 
 /* Dark mode friend requests modal */
 .dashboard-container.dark .friend-requests-modal {
-  background: #1e1e1e;
+  background: #0f172a;
+  border: 1px solid #1f2937;
 }
 
 .dashboard-container.dark .friend-requests-modal__header {
-  background: #2d2d2d;
-  border-bottom-color: #3d3d3d;
+  background: #0f172a;
+  border-bottom: 1px solid #1f2937;
 }
 
 .dashboard-container.dark .friend-requests-modal__header h4 {
-  color: #e0e0e0;
+  color: #e5e7eb;
 }
 
 .dashboard-container.dark .friend-request-item {
-  background: #2d2d2d;
-  border-color: #3d3d3d;
+  background: #111827;
+  border-color: #1f2937;
+  color: #e5e7eb;
 }
 
 .dashboard-container.dark .friend-request-item:hover {
-  background: #3d3d3d;
-  border-color: #4d4d4d;
+  background: #1f2937;
+  border-color: #2d3748;
 }
 
 .dashboard-container.dark .request-name {
-  color: #e0e0e0;
+  color: #e5e7eb;
 }
 
 .dashboard-container.dark .request-username {
-  color: #a0a0a0;
+  color: #9ca3af;
 }
 
 .dashboard-container.dark .friend-requests-empty {
-  color: #a0a0a0;
+  color: #9ca3af;
+}
+
+.dashboard-container.dark .addfriend-preview {
+  background: #0b1120;
+}
+
+/* Group chat dark mode colors*/
+.dashboard-container.dark .group-modal {
+  background: #0f172a;
+  color: #e5e7eb;
+  border: 1px solid #1f2937;
+}
+
+.dashboard-container.dark .group-modal__header {
+  background: #0f172a;
+  border-bottom: 1px solid #1f2937;
+}
+
+.dashboard-container.dark .group-modal__header h4 {
+  color: #e5e7eb;
+}
+
+.dashboard-container.dark .group-modal__field input {
+  background: #111827;
+  border-color: #1f2937;
+  color: #e5e7eb;
+}
+
+.dashboard-container.dark .group-row {
+  color: #e5e7eb;
+}
+
+.dashboard-container.dark .group-row__name {
+  color: #e5e7eb;
+}
+
+.dashboard-container.dark .group-row__status {
+  color: #9ca3af;
+}
+
+.dashboard-container.dark .group-row:hover {
+  background: #1f2937;
+}
+
+.dashboard-container.dark .group-modal__footer {
+  background: #0f172a;
+  border-top: 1px solid #1f2937;
 }
