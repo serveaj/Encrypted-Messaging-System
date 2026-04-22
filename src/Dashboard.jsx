@@ -1406,18 +1406,32 @@ const Dashboard = () => {
                 disabled={!addFriendSelected}
                 onClick={async () => {
                   const person = addFriendSelected;
+                  const token = localStorage.getItem('token');
 
-                  // Send friend request via Socket.io
-                  if (socketRef.current) {
-                    socketRef.current.emit('send_friend_request', {
-                      senderId: user.id,
-                      receiverId: person.id,
+                  try {
+                    const response = await fetch(`${API_URL}/api/contacts`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({ contactId: person.id }),
                     });
-                  }
 
-                  setShowAddFriendModal(false);
-                  setAddFriendSearch('');
-                  setAddFriendSelected(null);
+                    const data = await response.json();
+
+                    if (!data.success) {
+                      window.alert(data.message || 'Failed to send friend request.');
+                      return;
+                    }
+
+                    setShowAddFriendModal(false);
+                    setAddFriendSearch('');
+                    setAddFriendSelected(null);
+                  } catch (err) {
+                    console.error('[Dashboard] Failed to send friend request:', err);
+                    window.alert('Failed to send friend request.');
+                  }
                 }}
               >
                 Send Request

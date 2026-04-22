@@ -200,56 +200,110 @@ io.on('connection', (socket) => {
   // Socket event for sending a friend request
   socket.on('send_friend_request', async ({ senderId, receiverId }) => {
     try {
+      const targetId = Number(receiverId);
+
+      if (!Number.isInteger(targetId)) {
+        socket.emit('friend_request_error', { message: 'Invalid receiver.' });
+        return;
+      }
+
       // Get sender info
       const senderResult = await pool.query(
         'SELECT id, username, name, avatar_url FROM users WHERE id = $1',
         [senderId]
       );
-
       if (senderResult.rows.length === 0) {
         socket.emit('friend_request_error', { message: 'Sender not found.' });
         return;
       }
 
       const sender = senderResult.rows[0];
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
 
-      // Create the friend request in DB
-      const requestResult = await pool.query(
-        `INSERT INTO friend_requests (sender_id, receiver_id, status)
-         VALUES ($1, $2, 'pending')
-         ON CONFLICT DO NOTHING
-         RETURNING id, sender_id, receiver_id, status, created_at`,
-        [senderId, receiverId]
-      );
+        const existingContact = await client.query(
+          `SELECT 1 FROM contacts WHERE (user_id = $1 AND contact_id = $2) OR (user_id = $2 AND contact_id = $1)`,
+          [senderId, targetId]
+        );
 
-      if (requestResult.rows.length === 0) {
-        socket.emit('friend_request_error', { message: 'Request already pending or user is already a contact.' });
-        return;
-      }
+        if (existingContact.rows.length > 0) {
+          await client.query('ROLLBACK');
+          socket.emit('friend_request_error', { message: 'Already a contact.' });
+          return;
+        }
 
-      const request = requestResult.rows[0];
+        const existingRequest = await client.query(
+          `SELECT id, status FROM friend_requests
+           WHERE (sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1)`,
+          [senderId, targetId]
+        );
 
-      // Notify the receiver if they're online
-      const receiverSocketId = onlineUsers[receiverId];
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit('friend_request_received', {
-          request_id: request.id,
-          sender_id: sender.id,
-          username: sender.username,
-          name: sender.name,
-          avatar_url: sender.avatar_url,
-          created_at: request.created_at,
+        if (existingRequest.rows.length > 0) {
+          const pendingRequest = existingRequest.rows.find(r => r.status === 'pending');
+          if (pendingRequest) {
+            await client.query('ROLLBACK');
+            socket.emit('friend_request_error', { message: 'Request already pending.' });
+            return;
+          }
+
+          await client.query(
+            `DELETE FROM friend_requests
+             WHERE (sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1)`,
+            [senderId, targetId]
+          );
+        }
+
+        // Create the friend request in DB
+        const requestResult = await client.query(
+          `INSERT INTO friend_requests (sender_id, recipient_id, status)
+           VALUES ($1, $2, 'pending')
+           ON CONFLICT DO NOTHING
+           RETURNING id, sender_id, recipient_id, status, created_at`,
+          [senderId, targetId]
+        );
+
+        if (requestResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          socket.emit('friend_request_error', { message: 'Unable to create friend request.' });
+          return;
+        }
+
+        const request = requestResult.rows[0];
+
+        // Notify the receiver if they're online
+        const receiverSocketId = onlineUsers[targetId];
+        if (receiverSocketId) {
+          io.to(receiverSocketId).emit('friend_request_received', {
+            request_id: request.id,
+            sender_id: sender.id,
+            username: sender.username,
+            name: sender.name,
+            avatar_url: sender.avatar_url,
+            created_at: request.created_at,
+          });
+          console.log(`[Socket.io] Friend request sent from ${senderId} to ${targetId}`);
+        } else {
+          console.log(`[Socket.io] User ${receiverId} is offline — friend request saved`);
+        }
+
+        await client.query('COMMIT');
+
+        // Confirm to sender
+        socket.emit('friend_request_sent', {
+          requestId: request.id,
+          message: 'Friend request sent.'
         });
-        console.log(`[Socket.io] Friend request sent from ${senderId} to ${receiverId}`);
-      } else {
-        console.log(`[Socket.io] User ${receiverId} is offline — friend request saved`);
+      } catch (err) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackErr) {
+          console.error('[Socket.io] Rollback error:', rollbackErr.message);
+        }
+        throw err;
+      } finally {
+        client.release();
       }
-
-      // Confirm to sender
-      socket.emit('friend_request_sent', { 
-        requestId: request.id,
-        message: 'Friend request sent.' 
-      });
 
     } catch (err) {
       console.error('[Socket.io] send_friend_request error:', err.message);
