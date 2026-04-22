@@ -75,12 +75,26 @@ const initDB = async () => {
     CREATE TABLE IF NOT EXISTS friend_requests (
       id         SERIAL PRIMARY KEY,
       sender_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,   -- who sent the request
-      receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- who receives the request
+      recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- who receives the request
       status     VARCHAR(20) DEFAULT 'pending',                             -- pending, accepted, rejected
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW(),
-      UNIQUE(sender_id, receiver_id)                                        -- only one pending request per pair
+      UNIQUE(sender_id, recipient_id)                                       -- only one pending request per pair
     )
+  `);
+
+  // Backfill older databases that were created before recipient_id/status columns existed.
+  await pool.query(`
+    ALTER TABLE friend_requests
+      ADD COLUMN IF NOT EXISTS recipient_id INTEGER REFERENCES users(id) ON DELETE CASCADE
+  `);
+  await pool.query(`
+    ALTER TABLE friend_requests
+      ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'pending'
+  `);
+  await pool.query(`
+    ALTER TABLE friend_requests
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()
   `);
 
   console.log('[DB] Tables ready: users, messages, groups, group_members, group_messages, contacts, friend_requests.');

@@ -26,56 +26,111 @@ router.get('/', authMiddleware, async (req, res) => {
 router.post('/', authMiddleware, async (req, res) => {
   const { contactId } = req.body;
   const userId = req.user.id;
+  const targetId = Number(contactId);
 
   if (!contactId) {
     return res.status(400).json({ success: false, message: 'contactId is required.' });
   }
 
-  if (contactId === userId) {
+  if (!Number.isInteger(targetId)) {
+    return res.status(400).json({ success: false, message: 'contactId must be a valid user id.' });
+  }
+
+  if (targetId === userId) {
     return res.status(400).json({ success: false, message: 'You cannot add yourself.' });
   }
 
+  const client = await pool.connect();
+
   try {
+    await client.query('BEGIN');
+
     // Check if they're already contacts
-    const existingContact = await pool.query(
-      `SELECT 1 FROM contacts WHERE user_id = $1 AND contact_id = $2`,
-      [userId, contactId]
+    const existingContact = await client.query(
+      `SELECT 1 FROM contacts WHERE (user_id = $1 AND contact_id = $2) OR (user_id = $2 AND contact_id = $1)`,
+      [userId, targetId]
     );
 
     if (existingContact.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ success: false, message: 'Already a contact.' });
     }
 
-    // Check if there's already a pending request from either side
-    const existingRequest = await pool.query(
-      `SELECT * FROM friend_requests 
-       WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)
-       AND status = 'pending'`,
-      [userId, contactId]
+    // Check if there's already a request from either side.
+    const existingRequest = await client.query(
+      `SELECT id, status FROM friend_requests
+       WHERE (sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1)`,
+      [userId, targetId]
     );
 
     if (existingRequest.rows.length > 0) {
-      return res.status(400).json({ success: false, message: 'Request already pending.' });
+      const pendingRequest = existingRequest.rows.find(r => r.status === 'pending');
+      if (pendingRequest) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ success: false, message: 'Request already pending.' });
+      }
+
+      await client.query(
+        `DELETE FROM friend_requests
+         WHERE (sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1)`,
+        [userId, targetId]
+      );
     }
 
     // Create the friend request
-    const result = await pool.query(
-      `INSERT INTO friend_requests (sender_id, receiver_id, status)
+    const result = await client.query(
+      `INSERT INTO friend_requests (sender_id, recipient_id, status)
        VALUES ($1, $2, 'pending')
-       RETURNING id, sender_id, receiver_id, status, created_at`,
-      [userId, contactId]
+       RETURNING id, sender_id, recipient_id, status, created_at`,
+      [userId, targetId]
     );
 
     const request = result.rows[0];
 
-    return res.json({ 
-      success: true, 
+    await client.query('COMMIT');
+
+    // Notify the receiver if they are online so the bell updates instantly.
+    const io = req.app.get('io');
+    const onlineUsers = req.app.get('onlineUsers');
+    const receiverSocketId = onlineUsers?.[targetId];
+
+    if (io && receiverSocketId) {
+      const senderInfo = await pool.query(
+        `SELECT id, username, name, avatar_url FROM users WHERE id = $1`,
+        [userId]
+      );
+
+      const sender = senderInfo.rows[0];
+      if (sender) {
+        io.to(receiverSocketId).emit('friend_request_received', {
+          request_id: request.id,
+          sender_id: sender.id,
+          username: sender.username,
+          name: sender.name,
+          avatar_url: sender.avatar_url,
+          created_at: request.created_at,
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
       requestId: request.id,
-      message: 'Friend request sent.' 
+      message: 'Friend request sent.'
     });
   } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('[Contacts] Rollback error:', rollbackErr.message);
+    }
     console.error('[Contacts] Send friend request error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
+    return res.status(500).json({
+      success: false,
+      message: err.code === '23505' ? 'Request already exists.' : err.message,
+    });
+  } finally {
+    client.release();
   }
 });
 
@@ -83,17 +138,17 @@ router.post('/', authMiddleware, async (req, res) => {
 router.get('/requests/pending', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT 
+      `SELECT
         fr.id as request_id,
-        fr.sender_id,
-        u.id,
-        u.username,
-        u.name,
-        u.avatar_url,
+       fr.sender_id,
+       u.id,
+       u.username,
+       u.name,
+       u.avatar_url,
         fr.created_at
        FROM friend_requests fr
        JOIN users u ON u.id = fr.sender_id
-       WHERE fr.receiver_id = $1 AND fr.status = 'pending'
+       WHERE fr.recipient_id = $1 AND fr.status = 'pending'
        ORDER BY fr.created_at DESC`,
       [req.user.id]
     );
@@ -124,7 +179,7 @@ router.post('/requests/:requestId/accept', authMiddleware, async (req, res) => {
     const friendRequest = request.rows[0];
 
     // Verify the user is the receiver
-    if (friendRequest.receiver_id !== userId) {
+    if (friendRequest.recipient_id !== userId) {
       return res.status(403).json({ success: false, message: 'Unauthorized.' });
     }
 
@@ -141,12 +196,12 @@ router.post('/requests/:requestId/accept', authMiddleware, async (req, res) => {
     // Add contact for both sides (bidirectional)
     await pool.query(
       `INSERT INTO contacts (user_id, contact_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [friendRequest.sender_id, friendRequest.receiver_id]
+      [friendRequest.sender_id, friendRequest.recipient_id]
     );
 
     await pool.query(
       `INSERT INTO contacts (user_id, contact_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [friendRequest.receiver_id, friendRequest.sender_id]
+      [friendRequest.recipient_id, friendRequest.sender_id]
     );
 
     // Get the sender's info to return
@@ -165,7 +220,7 @@ router.post('/requests/:requestId/accept', authMiddleware, async (req, res) => {
     const io = req.app.get('io');
     const onlineUsers = req.app.get('onlineUsers');
     const senderSocketId = onlineUsers[friendRequest.sender_id];
-    
+
     if (senderSocketId && io && receiverInfo.rows[0]) {
       io.to(senderSocketId).emit('friend_request_accepted', {
         contact: {
@@ -177,10 +232,10 @@ router.post('/requests/:requestId/accept', authMiddleware, async (req, res) => {
       });
     }
 
-    return res.json({ 
+    return res.json({
       success: true,
       contact: senderInfo.rows[0],
-      message: 'Friend request accepted.' 
+      message: 'Friend request accepted.'
     });
   } catch (err) {
     console.error('[Contacts] Accept request error:', err.message);
@@ -207,7 +262,7 @@ router.post('/requests/:requestId/reject', authMiddleware, async (req, res) => {
     const friendRequest = request.rows[0];
 
     // Verify the user is the receiver
-    if (friendRequest.receiver_id !== userId) {
+    if (friendRequest.recipient_id !== userId) {
       return res.status(403).json({ success: false, message: 'Unauthorized.' });
     }
 
@@ -221,9 +276,9 @@ router.post('/requests/:requestId/reject', authMiddleware, async (req, res) => {
       [requestId]
     );
 
-    return res.json({ 
+    return res.json({
       success: true,
-      message: 'Friend request rejected.' 
+      message: 'Friend request rejected.'
     });
   } catch (err) {
     console.error('[Contacts] Reject request error:', err.message);
