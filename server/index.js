@@ -67,17 +67,17 @@ io.on('connection', (socket) => {
   });
 
   // Socket event for sending messages
-  socket.on('send_message', async ({ senderId, recipientId, content }) => {
+  socket.on('send_message', async ({ senderId, recipientId, content, fileName, fileType, fileData }) => {
     try {
       // Encryption should happen here
       const contentToStore = content;
 
       // Save the encrypted message to the DB
       const result = await pool.query(
-        `INSERT INTO messages (sender_id, recipient_id, content)
-         VALUES ($1, $2, $3)
-         RETURNING id, sender_id, recipient_id, content, created_at`,
-        [senderId, recipientId, contentToStore]
+        `INSERT INTO messages (sender_id, recipient_id, content, file_name, file_type, file_data)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, sender_id, recipient_id, content, file_name, file_type, file_data, created_at`,
+        [senderId, recipientId, contentToStore, fileName || null, fileType || null, fileData || null]
       );
 
       const savedMessage = result.rows[0];
@@ -89,6 +89,9 @@ io.on('connection', (socket) => {
         recipientId: savedMessage.recipient_id,
         content:     savedMessage.content,
         createdAt:   savedMessage.created_at,
+        fileName:    savedMessage.file_name  || null,
+        fileType:    savedMessage.file_type  || null,
+        fileData:    savedMessage.file_data  || null,
       };
 
       // Send message to recipient if they are online
@@ -152,7 +155,7 @@ io.on('connection', (socket) => {
   });
 
   // Socket event for sending a message in a group
-  socket.on('send_group_message', async ({ senderId, groupId, content }) => {
+  socket.on('send_group_message', async ({ senderId, groupId, content, fileName, fileType, fileData }) => {
     try {
       const result = await pool.query(
         `INSERT INTO group_messages (group_id, sender_id, content)
@@ -178,6 +181,9 @@ io.on('connection', (socket) => {
         senderName,
         content:    saved.content,
         createdAt:  saved.created_at,
+        fileName:   fileName || null,
+        fileType:   fileType || null,
+        fileData:   fileData || null,
       };
 
       for (const { user_id } of membersResult.rows) {

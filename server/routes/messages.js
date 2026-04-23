@@ -47,6 +47,9 @@ router.get('/:userId', authMiddleware, async (req, res) => {
         m.sender_id,
         m.recipient_id,
         m.content,
+        m.file_name,
+        m.file_type,
+        m.file_data,
         m.created_at,
         u.name AS sender_name
       FROM messages m

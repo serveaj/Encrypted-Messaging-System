@@ -356,10 +356,13 @@ const Dashboard = () => {
       const contentToDisplay = message.content;
 
       const newMsg = {
-        id:      message.id,
-        content: contentToDisplay,
-        type:    'received',
-        time:    new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        id:       message.id,
+        content:  contentToDisplay,
+        fileName: message.fileName || null,
+        fileData: message.fileData || null,
+        fileType: message.fileType || null,
+        type:     'received',
+        time:     new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
       // Update the chat list and move the chat to the top
@@ -533,11 +536,14 @@ const Dashboard = () => {
 
       if (data.success) {
         const messages = data.messages.map(msg => ({
-          id:      msg.id,
+          id:       msg.id,
           // Decryption here
-          content: msg.content,
-          type:    msg.sender_id === user.id ? 'sent' : 'received',
-          time:    new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          content:  msg.content,
+          fileName: msg.file_name || null,
+          fileType: msg.file_type || null,
+          fileData: msg.file_data || null,
+          type:     msg.sender_id === user.id ? 'sent' : 'received',
+          time:     new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }));
 
         // Update both the active chat view and the chats list with the loaded history
@@ -560,11 +566,13 @@ const Dashboard = () => {
 
       if (data.success) {
         const messages = data.messages.map(msg => ({
-          id:         msg.id,
-          content:    msg.content,
-          senderName: msg.sender_name,
-          type:       msg.sender_id === user.id ? 'sent' : 'received',
-          time:       new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          id:       msg.id,
+          content:  msg.content,
+          fileName: msg.file_name || null,
+          fileType: msg.file_type || null,
+          fileData: msg.file_data || null,
+          type:     msg.sender_id === user.id ? 'sent' : 'received',
+          time:     new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }));
 
         const groupChatId = `group_${groupId}`;
@@ -580,25 +588,29 @@ const Dashboard = () => {
   const handleSendMessage = () => {
     if ((!newMessage.trim() && !attachedFile) || !activeChat) return;
 
-    const content = newMessage.trim() || (attachedFile ? attachedFile.name : '');
+    const content = newMessage.trim() || '';
 
     // Encryption here
     const contentToSend = content;
 
-    if (socketRef.current) {
-      if (activeChat.isGroup) {
-        socketRef.current.emit('send_group_message', {
-          senderId: user.id,
-          groupId:  activeChat.groupId,
-          content:  contentToSend,
-        });
-      } else {
-        socketRef.current.emit('send_message', {
-          senderId:    user.id,
-          recipientId: activeChat.id,
-          content:     contentToSend,
-        });
-      }
+    const filePayload = attachedFile
+      ? { fileName: attachedFile.name, fileType: attachedFile.type, fileData: attachedFile.data }
+      : {};
+
+    if (activeChat.isGroup) {
+      socketRef.current.emit('send_group_message', {
+        senderId: user.id,
+        groupId:  activeChat.groupId,
+        content:  contentToSend,
+        ...filePayload,
+      });
+    } else {
+      socketRef.current.emit('send_message', {
+        senderId:    user.id,
+        recipientId: activeChat.id,
+        content:     contentToSend,
+        ...filePayload,
+      });
     }
 
     // Add the message to the UI immediately so it feels instant
@@ -607,7 +619,7 @@ const Dashboard = () => {
       id:       Date.now(), // temporary ID, replaced when server confirms
       content:  content,    // show the original (unencrypted) content to the sender
       fileName: attachedFile?.name || null,
-      fileUrl:  attachedFile?.url  || null,
+      fileUrl:  attachedFile?.data  || null,
       fileType: attachedFile?.type || null,
       type:     'sent',
       time:     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -676,8 +688,11 @@ const Dashboard = () => {
       setAttachedFile(null);
       return;
     }
-    const url = URL.createObjectURL(file);
-    setAttachedFile({ name: file.name, url, type: file.type });
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAttachedFile({ name: file.name, type: file.type, data: reader.result });
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleAddFriend = () => {
@@ -1063,13 +1078,22 @@ const Dashboard = () => {
                   {message.fileName && (
                     <div className="message-file">
                       📎
-                      {message.fileUrl ? (
-                        message.fileType && message.fileType.startsWith('image') ? (
-                          <a href={message.fileUrl} target="_blank" rel="noreferrer">
-                            <img src={message.fileUrl} alt={message.fileName} className="message-image" />
-                          </a>
-                        ) : (
-                          <a href={message.fileUrl} download={message.fileName} target="_blank" rel="noreferrer">
+                      {message.fileData ? (
+                      // REPLACE WITH THIS:
+                      message.fileType?.startsWith('image') ? (
+                        <img
+                          src={message.fileData}
+                          alt={message.fileName}
+                          className="message-image"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => {
+                            const newTab = window.open();
+                            newTab.document.write(`<img src="${message.fileData}" style="max-width:100%" />`);
+                            newTab.document.close();
+                          }}
+                        />
+                      ) : (
+                          <a href={message.fileData} download={message.fileName} target="_blank" rel="noreferrer">
                             {message.fileName}
                           </a>
                         )

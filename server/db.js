@@ -27,12 +27,21 @@ const initDB = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS messages (
       id           SERIAL PRIMARY KEY,
-      sender_id    INTEGER NOT NULL REFERENCES users(id),    -- who sent it
-      recipient_id INTEGER NOT NULL REFERENCES users(id),    -- who received it
-      content      TEXT    NOT NULL,                         -- the message text
-      created_at   TIMESTAMP DEFAULT NOW()                   -- when it was sent
+      sender_id    INTEGER NOT NULL REFERENCES users(id),
+      recipient_id INTEGER NOT NULL REFERENCES users(id),
+      content      TEXT    NOT NULL,
+      file_name    TEXT,
+      file_type    TEXT,
+      file_data    TEXT,
+      created_at   TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  // Add file columns to existing messages table if not already there
+  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_name TEXT`);
+  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_type TEXT`);
+  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_data TEXT`);
+  
   // Groups table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
