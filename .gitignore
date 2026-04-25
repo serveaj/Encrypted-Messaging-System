@@ -25,3 +25,15 @@ yarn-error.log*
 .env
 src/.env
 server/.env
+
+# Java / Maven (encryption service)
+encryption/target/
+*.iws
+*.iml
+*.ipr
+.idea/
+.classpath
+.project
+.settings/
+.springBeans
+.sts4-cache

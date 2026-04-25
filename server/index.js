@@ -69,8 +69,34 @@ io.on('connection', (socket) => {
   // Socket event for sending messages
   socket.on('send_message', async ({ senderId, recipientId, content, fileName, fileType, fileData }) => {
     try {
-      // Encryption should happen here
-      const contentToStore = content;
+      // Encrypt message via encryption service
+      let contentToStore = content;
+      const usersRes = await pool.query(
+        'SELECT id, username, encryption_key_id, signing_key_id FROM users WHERE id = ANY($1)',
+        [[senderId, recipientId]]
+      );
+      const sender   = usersRes.rows.find(u => u.id === senderId);
+      const receiver = usersRes.rows.find(u => u.id === recipientId);
+
+      if (sender?.signing_key_id && receiver?.encryption_key_id) {
+        try {
+          const encRes  = await fetch('http://encryption:8080/crypto/encrypt', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              message:                 content,
+              senderUsername:          sender.username,
+              senderSigningKeyId:      sender.signing_key_id,
+              receiverUsername:        receiver.username,
+              receiverEncryptionKeyId: receiver.encryption_key_id,
+            }),
+          });
+          const encData = await encRes.json();
+          contentToStore = JSON.stringify({ encrypted: true, ...encData });
+        } catch (encErr) {
+          console.error('[Socket.io] Encryption failed, storing plaintext:', encErr.message);
+        }
+      }
 
       // Save the encrypted message to the DB
       const result = await pool.query(
@@ -157,20 +183,63 @@ io.on('connection', (socket) => {
   // Socket event for sending a message in a group
   socket.on('send_group_message', async ({ senderId, groupId, content, fileName, fileType, fileData }) => {
     try {
+      // Fetch sender info and all group members with their KMS keys
+      const senderResult = await pool.query(
+        'SELECT id, username, name, signing_key_id FROM users WHERE id = $1', [senderId]
+      );
+      const senderRow  = senderResult.rows[0];
+      const senderName = senderRow?.name || 'Unknown';
+
+      const membersResult = await pool.query(
+        `SELECT u.id, u.username, u.encryption_key_id
+         FROM group_members gm
+         JOIN users u ON u.id = gm.user_id
+         WHERE gm.group_id = $1`, [groupId]
+      );
+
+      // Encrypt for all members if keys are available
+      let contentToStore = content;
+      const memberKeys = {};
+      const membersWithKeys = membersResult.rows.filter(m => m.encryption_key_id);
+
+      if (senderRow?.signing_key_id && membersWithKeys.length > 0) {
+        try {
+          const encRes  = await fetch('http://encryption:8080/crypto/encrypt-group', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              message:           content,
+              senderUsername:    senderRow.username,
+              senderSigningKeyId: senderRow.signing_key_id,
+              groupId:           String(groupId),
+              members:           membersWithKeys.map(m => ({
+                username:        m.username,
+                encryptionKeyId: m.encryption_key_id,
+              })),
+            }),
+          });
+          const encData = await encRes.json();
+          contentToStore = JSON.stringify({
+            encrypted:      true,
+            encryptedPayload: encData.encryptedPayload,
+            iv:             encData.iv,
+            signature:      encData.signature,
+            memberKeys:     encData.memberKeys,
+          });
+        } catch (encErr) {
+          console.error('[Socket.io] Group encryption failed, storing plaintext:', encErr.message);
+        }
+      }
+
       const result = await pool.query(
         `INSERT INTO group_messages (group_id, sender_id, content)
          VALUES ($1, $2, $3)
          RETURNING id, group_id, sender_id, content, created_at`,
-        [groupId, senderId, content]
+        [groupId, senderId, contentToStore]
       );
       const saved = result.rows[0];
 
-      const senderResult = await pool.query(
-        'SELECT name FROM users WHERE id = $1', [senderId]
-      );
-      const senderName = senderResult.rows[0]?.name || 'Unknown';
-
-      const membersResult = await pool.query(
+      const membersResult2 = await pool.query(
         'SELECT user_id FROM group_members WHERE group_id = $1', [groupId]
       );
 
@@ -179,14 +248,14 @@ io.on('connection', (socket) => {
         groupId:    saved.group_id,
         senderId:   saved.sender_id,
         senderName,
-        content:    saved.content,
+        content,
         createdAt:  saved.created_at,
         fileName:   fileName || null,
         fileType:   fileType || null,
         fileData:   fileData || null,
       };
 
-      for (const { user_id } of membersResult.rows) {
+      for (const { user_id } of membersResult2.rows) {
         if (user_id !== senderId) {
           const socketId = onlineUsers[user_id];
           if (socketId) {

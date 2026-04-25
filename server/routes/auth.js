@@ -33,11 +33,27 @@ router.post('/register', async (req, res) => {
     const avatar_url = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1abc9c&color=fff`;
 
     // Insert the new user into the database.
+    // Create KMS keys for this user via the encryption service
+    let encryption_key_id = null;
+    let signing_key_id    = null;
+    try {
+      const kmsRes  = await fetch('http://encryption:8080/crypto/register', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ username }),
+      });
+      const kmsData = await kmsRes.json();
+      encryption_key_id = kmsData.encryptionKeyId;
+      signing_key_id    = kmsData.signingKeyId;
+    } catch (kmsErr) {
+      console.error('[Auth] KMS key creation failed:', kmsErr.message);
+    }
+
     const result = await pool.query(
-      `INSERT INTO users (username, email, password_hash, name, avatar_url)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, username, name, avatar_url`,
-      [username, email, password_hash, name, avatar_url]
+      `INSERT INTO users (username, email, password_hash, name, avatar_url, encryption_key_id, signing_key_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, username, name, avatar_url, encryption_key_id, signing_key_id`,
+      [username, email, password_hash, name, avatar_url, encryption_key_id, signing_key_id]
     );
 
     const newUser = result.rows[0];

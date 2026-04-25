@@ -3,6 +3,39 @@ const router         = express.Router();
 const pool           = require('../db');
 const authMiddleware = require('../middleware/auth');
 
+const ENCRYPTION_URL = 'http://encryption:8080';
+
+async function decryptGroupContent(content, senderRow, receiverRow, groupId) {
+  if (!content) return content;
+  let parsed;
+  try { parsed = JSON.parse(content); } catch { return content; }
+  if (!parsed.encrypted) return content;
+
+  const memberKey = parsed.memberKeys?.[receiverRow.username];
+  if (!memberKey || !senderRow.signing_key_id || !receiverRow.encryption_key_id) return '[encrypted]';
+
+  try {
+    const res  = await fetch(`${ENCRYPTION_URL}/crypto/decrypt-group`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        senderUsername:          senderRow.username,
+        senderSigningKeyId:      senderRow.signing_key_id,
+        groupId:                 String(groupId),
+        receiverUsername:        receiverRow.username,
+        receiverEncryptionKeyId: receiverRow.encryption_key_id,
+        encryptedPayload:        parsed.encryptedPayload,
+        encryptedSessionKey:     memberKey,
+        iv:                      parsed.iv,
+        signature:               parsed.signature,
+      }),
+    });
+    const data = await res.json();
+    return data.plaintext || '[decryption failed]';
+  } catch {
+    return '[decryption failed]';
+  }
+}
 
 // Returns all groups user is a member of
 router.get('/', authMiddleware, async (req, res) => {
@@ -31,14 +64,23 @@ router.get('/', authMiddleware, async (req, res) => {
       [req.user.id]
     );
 
-    return res.json({ success: true, groups: result.rows });
+    const groups = result.rows.map(g => {
+      let lastMessage = g.last_message;
+      try {
+        const parsed = JSON.parse(g.last_message);
+        if (parsed.encrypted) lastMessage = '🔒 Encrypted message';
+      } catch {}
+      return { ...g, last_message: lastMessage };
+    });
+
+    return res.json({ success: true, groups });
   } catch (err) {
     console.error('[Groups] Get groups error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
 
-// Returns message history for each group
+// Returns decrypted message history for a group
 router.get('/:groupId/messages', authMiddleware, async (req, res) => {
   const groupId = parseInt(req.params.groupId);
   const userId  = req.user.id;
@@ -52,9 +94,15 @@ router.get('/:groupId/messages', authMiddleware, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not a member of this group.' });
     }
 
+    const receiverRes = await pool.query(
+      'SELECT username, encryption_key_id FROM users WHERE id = $1', [userId]
+    );
+    const receiverRow = receiverRes.rows[0];
+
     const result = await pool.query(
       `SELECT gm.id, gm.sender_id, gm.content, gm.created_at,
-              u.name AS sender_name
+              u.name AS sender_name, u.username AS sender_username,
+              u.signing_key_id AS sender_signing_key_id
        FROM group_messages gm
        JOIN users u ON u.id = gm.sender_id
        WHERE gm.group_id = $1
@@ -62,7 +110,22 @@ router.get('/:groupId/messages', authMiddleware, async (req, res) => {
       [groupId]
     );
 
-    return res.json({ success: true, messages: result.rows });
+    const messages = await Promise.all(result.rows.map(async msg => {
+      const senderRow = {
+        username:       msg.sender_username,
+        signing_key_id: msg.sender_signing_key_id,
+      };
+      const content = await decryptGroupContent(msg.content, senderRow, receiverRow, groupId);
+      return {
+        id:          msg.id,
+        sender_id:   msg.sender_id,
+        content,
+        created_at:  msg.created_at,
+        sender_name: msg.sender_name,
+      };
+    }));
+
+    return res.json({ success: true, messages });
   } catch (err) {
     console.error('[Groups] Get messages error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });

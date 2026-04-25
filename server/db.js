@@ -14,13 +14,15 @@ const initDB = async () => {
 // Users table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
-      id            SERIAL PRIMARY KEY,            -- auto-incrementing unique ID
-      username      VARCHAR(50)  UNIQUE NOT NULL,  -- unique login handle
-      email         VARCHAR(100) UNIQUE NOT NULL,  -- unique email address
-      password_hash VARCHAR(255) NOT NULL,         -- hashed password (NEVER plain text)
-      name          VARCHAR(100) NOT NULL,         -- display name
-      avatar_url    VARCHAR(255),                  -- profile picture URL
-      created_at    TIMESTAMP DEFAULT NOW()        -- auto-set when user is created
+      id                SERIAL PRIMARY KEY,
+      username          VARCHAR(50)  UNIQUE NOT NULL,
+      email             VARCHAR(100) UNIQUE NOT NULL,
+      password_hash     VARCHAR(255) NOT NULL,
+      name              VARCHAR(100) NOT NULL,
+      avatar_url        VARCHAR(255),
+      encryption_key_id VARCHAR(255),
+      signing_key_id    VARCHAR(255),
+      created_at        TIMESTAMP DEFAULT NOW()
     )
   `);
 // Messages table
@@ -37,11 +39,6 @@ const initDB = async () => {
     )
   `);
 
-  // Add file columns to existing messages table if not already there
-  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_name TEXT`);
-  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_type TEXT`);
-  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_data TEXT`);
-  
   // Groups table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
@@ -90,20 +87,6 @@ const initDB = async () => {
       updated_at TIMESTAMP DEFAULT NOW(),
       UNIQUE(sender_id, recipient_id)                                       -- only one pending request per pair
     )
-  `);
-
-  // Backfill older databases that were created before recipient_id/status columns existed.
-  await pool.query(`
-    ALTER TABLE friend_requests
-      ADD COLUMN IF NOT EXISTS recipient_id INTEGER REFERENCES users(id) ON DELETE CASCADE
-  `);
-  await pool.query(`
-    ALTER TABLE friend_requests
-      ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'pending'
-  `);
-  await pool.query(`
-    ALTER TABLE friend_requests
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()
   `);
 
   console.log('[DB] Tables ready: users, messages, groups, group_members, group_messages, contacts, friend_requests.');
