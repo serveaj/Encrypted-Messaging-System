@@ -20,7 +20,7 @@ FROM dev AS build
 COPY . .
 
 # Build React app (creates build folder with static files)
-RUN npm run build
+RUN NODE_OPTIONS=--max-old-space-size=512 npm run build
 
 # Stage 3: Production server using Nginx
 FROM nginx:alpine
