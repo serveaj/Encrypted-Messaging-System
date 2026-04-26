@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
         id:          savedMessage.id,
         senderId:    savedMessage.sender_id,
         recipientId: savedMessage.recipient_id,
-        content:     savedMessage.content,
+        content,
         createdAt:   savedMessage.created_at,
         fileName:    savedMessage.file_name  || null,
         fileType:    savedMessage.file_type  || null,
