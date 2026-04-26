@@ -29,8 +29,12 @@ async function decryptContent(content, senderRow, receiverRow) {
       }),
     });
     const data = await res.json();
+    if (!data.plaintext) {
+      console.error('[Decrypt] Encryption service error:', JSON.stringify(data));
+    }
     return data.plaintext || '[decryption failed]';
-  } catch {
+  } catch (err) {
+    console.error('[Decrypt] Fetch error:', err.message);
     return '[decryption failed]';
   }
 }
