@@ -39,7 +39,7 @@ async function decryptContent(content, senderRow, receiverRow) {
   }
 }
 
-// Returns the last message for each conversation (previews only, no decrypt)
+// Returns the last message for each conversation (with decryption)
 router.get('/previews', authMiddleware, async (req, res) => {
   const userId = req.user.id;
 
@@ -47,29 +47,32 @@ router.get('/previews', authMiddleware, async (req, res) => {
     const result = await pool.query(`
       SELECT DISTINCT ON (other_id)
         other_id,
-        content,
-        created_at,
-        sender_id
+        m.content,
+        m.created_at,
+        m.sender_id,
+        s.username AS sender_username,
+        s.signing_key_id AS sender_signing_key_id,
+        r.username AS receiver_username,
+        r.encryption_key_id AS receiver_encryption_key_id
       FROM (
         SELECT
           CASE WHEN sender_id = $1 THEN recipient_id ELSE sender_id END AS other_id,
-          content,
-          created_at,
-          sender_id
+          id, content, created_at, sender_id, recipient_id
         FROM messages
         WHERE sender_id = $1 OR recipient_id = $1
       ) sub
-      ORDER BY other_id, created_at DESC
+      JOIN messages m ON m.id = sub.id
+      JOIN users s ON s.id = m.sender_id
+      JOIN users r ON r.id = m.recipient_id
+      ORDER BY other_id, m.created_at DESC
     `, [userId]);
 
-    const previews = result.rows.map(row => {
-      let preview = row.content;
-      try {
-        const parsed = JSON.parse(row.content);
-        if (parsed.encrypted) preview = '🔒 Encrypted message';
-      } catch {}
-      return { ...row, content: preview };
-    });
+    const previews = await Promise.all(result.rows.map(async row => {
+      const senderRow   = { username: row.sender_username,   signing_key_id: row.sender_signing_key_id };
+      const receiverRow = { username: row.receiver_username, encryption_key_id: row.receiver_encryption_key_id };
+      const content     = await decryptContent(row.content, senderRow, receiverRow);
+      return { other_id: row.other_id, sender_id: row.sender_id, created_at: row.created_at, content };
+    }));
 
     return res.json({ success: true, previews });
 
