@@ -1,6 +1,6 @@
 # SecureComm — Encrypted Messaging System
 
-A full-stack real-time messaging application with end-to-end encryption powered by AWS KMS. Messages are encrypted before being stored in the database and can only be decrypted by the intended recipient.
+A full stack real time messaging application with end-to-end encryption powered by AWS KMS. Messages are encrypted before being stored in the database and can only be decrypted by the intended recipient.
 
 ## Architecture
 
@@ -34,7 +34,7 @@ Each user gets two AWS KMS RSA-2048 key pairs on registration:
 
 **Group messages** use the same scheme, but the session key is encrypted separately for each group member so each member can independently decrypt.
 
-Messages are stored encrypted in the database. Decryption happens server-side via the encryption microservice when message history is fetched.
+Messages are stored encrypted in the database. Decryption happens server side via the encryption microservice when message history is fetched.
 
 ## Tech Stack
 
@@ -137,8 +137,8 @@ sudo swapon /swapfile
 ### 3. Clone the repo
 
 ```bash
-git clone <your-repo-url> ~/app
-cd ~/app
+git clone https://github.com/serveaj/Encrypted-Messaging-System ~/Encrypted-Messaging-System
+cd ~/Encrypted-Messaging-System
 ```
 
 ### 4. Create environment files
