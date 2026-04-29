@@ -1,160 +1,204 @@
-# Description
+# SecureComm — Encrypted Messaging System
 
-SecureComm is a encrypted messaging web application built with **React**.
-It demonstrates authentication, protected routes, chat UI functionality, 
-and a full Dockerized development/production workflow.
+A full-stack real-time messaging application with end-to-end encryption powered by AWS KMS. Messages are encrypted before being stored in the database and can only be decrypted by the intended recipient.
 
----
+## Architecture
 
-## Project Setup
-
-### **1. Clone the repository**
-```bash
-git clone https://github.com/serveaj/Encrypted-Messaging-System.git
-cd Encrypted-Messaging-System
 ```
-### **2. Try building the project**
-```bash
-Ctrl+Shift+B
-```
-
-### **3. Install dependencies**
-```bash
-npm install
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Frontend  │────▶│   Backend   │────▶│  Encryption │────▶│  AWS KMS   │
+│  React/Nginx│     │  Node.js +  │     │  Java Spring│     │ RSA-2048   │
+│   Port 80   │     │  Socket.io  │     │    Boot     │     │ Key Pairs  │
+│             │     │  Port 5000  │     │  Port 8080  │     │            │
+└─────────────┘     └──────┬──────┘     └─────────────┘     └─────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │  PostgreSQL │
+                    │  Port 5432  │
+                    └─────────────┘
 ```
 
-### **4. Run locally**
-```bash
-npm start
-```
-App will be available at: **http://localhost:3000**
+All four services run as Docker containers managed by Docker Compose.
 
----
+## Encryption Model
 
-## Docker Usage
+Each user gets two AWS KMS RSA-2048 key pairs on registration:
 
-```bash
-docker build --target dev -t encrypted-app-dev .
-```
+- **Encryption key** — used to encrypt session keys for that user (RSAES_OAEP_SHA_256)
+- **Signing key** — used to sign and verify messages (RSASSA_PSS_SHA_256)
 
-### **Run Dev Container**
-```bash
-docker run -p 3000:3000 --name encrypted-dev-container -d encrypted-app-dev
-```
+**Direct messages** use hybrid encryption:
+1. A random AES-256-GCM session key encrypts the message payload
+2. The session key is encrypted with the receiver's RSA public key via AWS KMS
+3. The sender signs the combined ciphertext with their KMS signing key
 
-### **Build Production Image**
-```bash
-docker build --no-cache -t encrypted-app-prod .
-```
+**Group messages** use the same scheme, but the session key is encrypted separately for each group member so each member can independently decrypt.
 
-### **Run Production Container**
-```bash
-docker run -p 8080:80 --name encrypted-prod-test -d encrypted-app-prod
-```
+Messages are stored encrypted in the database. Decryption happens server-side via the encryption microservice when message history is fetched.
 
----
+## Tech Stack
 
-## VS Code Tasks
-This project includes `.vscode/tasks.json` for simplified Docker workflows:
-
-- **Build Dev Image**
-- **Docker Build & Test Prod**
-- **Docker Start Dev & View** (Default – `Ctrl+Shift+B`)
-- **Docker Start Prod Server**
-- **Docker Start Dev (Live Reload)**
-
-Run tasks via: **Terminal → Run Task** in VS Code.
-
----
-
-## Project Structure
-```
-.
-├── .dockerignore                 # Specifies files to ignore in Docker builds
-├── .env                          # Environment variables
-├── .gitignore                    # Files to ignore in Git version control
-├── Dockerfile                    # Multi-stage Docker build configuration
-├── index.html                    # Root HTML file
-├── index.css                     # Global styling and reset
-├── package.json
-├── package-lock.json
-├── README.md
-├── src/
-│    ├── assets/
-│    │    ├── Emojis/
-│    │    │    ├── emojiData.js       # Processed emoji data for use in app
-│    │    │    └── openmoji.json      # Raw source file for OpenMoji data
-│    │    └── Logos/
-│    │         ├── hide.png             # Password visibility toggle icon
-│    │         ├── login.gif            # Login screen graphic/animation
-│    │         ├── unhide.png           # Password visibility toggle icon
-│    │         └── webLogo.jpg          # Application logo
-│    ├── data/
-│    │    ├── chats.json              # Mock conversation history
-│    │    └── users.json              # Mock user data for authentication
-│    ├── styles/
-│    │    ├── Dashboard.css           # Styling for the chat interface
-│    │    └── Login.css               # Shared styles for login/register pages
-│    ├── utils/
-│    │    ├── AuthContext.jsx         # React Context for mock authentication logic
-│    │    └── emojiProcessor.js       # Utility function for handling emoji rendering
-│    ├── App.jsx                       # Main app component with routing
-│    ├── Dashboard.jsx                 # Primary chat dashboard component
-│    ├── index.jsx                     # React application entry point
-│    ├── Login.jsx                     # Login form component
-│    └── Register.jsx                  # Registration form component
-└── .vscode/tasks.json            # VS Code tasks for Docker workflows
-```
-
----
+| Layer | Technology |
+|---|---|
+| Frontend | React 18, React Router v6, Socket.io-client, Axios |
+| Backend | Node.js, Express, Socket.io, pg |
+| Encryption | Java 21, Spring Boot 3.4.1, AWS SDK v2 |
+| Database | PostgreSQL 15 |
+| Serving | Nginx |
+| Deployment | Docker, Docker Compose, AWS EC2 |
 
 ## Features
 
-### **Authentication**
-- Mock login & registration via `AuthContext`
-- Session stored in **localStorage**
-- **Protected routes** (Dashboard only accessible when logged in)
+- Real-time messaging via WebSockets (Socket.io)
+- End-to-end encryption for direct and group messages
+- Group chat with per-member encrypted session keys
+- Contact and friend request system
+- File sharing
+- Online presence indicators
+- Message history with automatic decryption
+- Encrypted message previews in the sidebar
 
-### **Chat Dashboard**
-- Sidebar with user profile and conversation list
-- Main chat area with messages
-- **Auto-scroll to latest message**
-- Mock conversations from `users.json`
+## Project Structure
 
-### **Forms**
-- Login validation
-- Registration with confirm password & visibility toggle
-- Error handling + loading states
+```
+├── src/                        # React frontend
+│   ├── App.jsx
+│   ├── Dashboard.jsx
+│   ├── Landing.jsx
+│   ├── Login.jsx
+│   ├── Register.jsx
+│   └── utils/
+│       ├── AuthContext.jsx
+│       └── emojiProcessor.js
+├── server/                     # Node.js backend
+│   ├── index.js                # Express + Socket.io entry point
+│   ├── db.js                   # PostgreSQL connection + schema
+│   ├── routes/
+│   │   ├── auth.js
+│   │   ├── messages.js
+│   │   ├── groups.js
+│   │   └── contacts.js
+│   └── middleware/
+│       └── auth.js
+├── encryption/                 # Java Spring Boot encryption microservice
+│   └── src/main/java/com/example/securemessaging/
+│       ├── controller/CryptoController.java
+│       ├── service/KmsService.java
+│       └── security/
+│           ├── HybridEncryptionService.java
+│           ├── AESService.java
+│           ├── RSAService.java
+│           └── EncryptedMessage.java
+├── Dockerfile                  # Frontend multi-stage build
+├── nginx.conf                  # Reverse proxies /api and /socket.io to backend
+└── docker-compose.yml
+```
 
-### **Styling**
-- Clean, responsive UI
-- Animated borders and glow effects
-- Custom styles: `Login.css` & `Dashboard.css`
+## Prerequisites
 
-### **Dockerized Environment**
-- Multi-stage Dockerfile: **dev**, **build**, **prod**
-- VS Code tasks for automated workflows
-- Dev server → `http://localhost:3000`
-- Prod server → `http://localhost:8080`
+- AWS account with an EC2 instance (Amazon Linux 2023 recommended)
+- EC2 IAM role with the following KMS permissions:
+  - `kms:CreateKey`
+  - `kms:GetPublicKey`
+  - `kms:Decrypt`
+  - `kms:Sign`
+  - `kms:Verify`
+  - `kms:DescribeKey`
+- Docker and Docker Compose installed on the EC2 instance
 
----
+## Deployment (AWS EC2 — Amazon Linux)
 
-## Authentication Notes
-- Login always succeeds in mock mode.
-- If username not found in `users.json`, a temporary in-memory user is created.
-- Session stored in `localStorage` (`token`, `user`).
-- Logout clears session.
+### 1. Install dependencies
 
-## New Updae
-- Add Landing page / Home Page
-- Auto-Expanding Chat Input
-- Separate Navigation for DMs and Groups
-- Fix Responsive Layout Issues
-- Define “+ New” Button Functionality
+```bash
+sudo dnf update -y
+sudo dnf install -y git docker
+sudo systemctl enable docker --now
+sudo usermod -aG docker ec2-user
+newgrp docker
 
-## Future Improvements
-- Real API for authentication
-- JWT token support
-- Backend chat via WebSocket or REST
-- Stronger form validation & UI improvements
-- Unit + integration tests
+# Docker Compose plugin
+DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+mkdir -p $DOCKER_CONFIG/cli-plugins
+curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+  -o $DOCKER_CONFIG/cli-plugins/docker-compose
+chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
+```
+
+### 2. Add swap (recommended for t3.micro to prevent OOM during build)
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+```
+
+### 3. Clone the repo
+
+```bash
+git clone <your-repo-url> ~/app
+cd ~/app
+```
+
+### 4. Create environment files
+
+**`server/.env`**
+```env
+PORT=5000
+DATABASE_URL=postgresql://postgres:localpassword@db:5432/securecomm
+JWT_SECRET=your_jwt_secret_here
+FRONTEND_URL=http://<your-ec2-public-ip>
+```
+
+**`.env`** (root — baked into the React build at build time)
+```env
+REACT_APP_API_URL=http://<your-ec2-public-ip>
+```
+
+### 5. Build and start
+
+```bash
+docker compose up --build -d
+```
+
+The app will be available at `http://<your-ec2-public-ip>`.
+
+### Deploying updates
+
+```bash
+git pull && docker compose up --build -d
+```
+
+If the EC2 public IP changes (e.g. after a restart), update `REACT_APP_API_URL` in `.env` and rebuild with `--no-cache`.
+
+## EC2 Security Group
+
+Required inbound rules:
+
+| Port | Protocol | Source | Purpose |
+|------|----------|--------|---------|
+| 22 | TCP | Your IP | SSH |
+| 80 | TCP | Anywhere | Frontend |
+| 5000 | TCP | Anywhere | Backend API |
+
+## Encryption Service API
+
+The encryption microservice is internal to Docker (not exposed publicly) and is called by the backend only:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/crypto/register` | Creates two KMS key pairs for a new user |
+| POST | `/crypto/encrypt` | Encrypts a direct message |
+| POST | `/crypto/decrypt` | Decrypts a direct message |
+| POST | `/crypto/encrypt-group` | Encrypts a group message for all members |
+| POST | `/crypto/decrypt-group` | Decrypts a group message for one member |
+
+## Environment Variables
+
+| Variable | File | Description |
+|----------|------|-------------|
+| `DATABASE_URL` | `server/.env` | PostgreSQL connection string |
+| `JWT_SECRET` | `server/.env` | Secret for signing JWT tokens |
+| `FRONTEND_URL` | `server/.env` | Allowed CORS origin |
+| `REACT_APP_API_URL` | `.env` (root) | Backend URL baked into the React build |

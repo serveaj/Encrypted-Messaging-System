@@ -566,13 +566,14 @@ const Dashboard = () => {
 
       if (data.success) {
         const messages = data.messages.map(msg => ({
-          id:       msg.id,
-          content:  msg.content,
-          fileName: msg.file_name || null,
-          fileType: msg.file_type || null,
-          fileData: msg.file_data || null,
-          type:     msg.sender_id === user.id ? 'sent' : 'received',
-          time:     new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          id:         msg.id,
+          content:    msg.content,
+          senderName: msg.sender_name || null,
+          fileName:   msg.file_name || null,
+          fileType:   msg.file_type || null,
+          fileData:   msg.file_data || null,
+          type:       msg.sender_id === user.id ? 'sent' : 'received',
+          time:       new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }));
 
         const groupChatId = `group_${groupId}`;
