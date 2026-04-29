@@ -40,16 +40,26 @@ async function decryptGroupContent(content, senderRow, receiverRow, groupId) {
 // Returns all groups user is a member of
 router.get('/', authMiddleware, async (req, res) => {
   try {
+    const receiverRes = await pool.query(
+      'SELECT username, encryption_key_id FROM users WHERE id = $1', [req.user.id]
+    );
+    const receiverRow = receiverRes.rows[0];
+
     const result = await pool.query(
       `SELECT g.id, g.name, g.created_by, g.created_at,
               array_agg(gm.user_id) AS member_ids,
-              last_msg.content      AS last_message,
-              last_msg.created_at   AS last_message_at,
-              last_msg.sender_name  AS last_message_sender
+              last_msg.content               AS last_message,
+              last_msg.created_at            AS last_message_at,
+              last_msg.sender_name           AS last_message_sender,
+              last_msg.sender_username       AS last_message_sender_username,
+              last_msg.sender_signing_key_id AS last_message_sender_signing_key_id
        FROM groups g
        JOIN group_members gm ON gm.group_id = g.id
        LEFT JOIN LATERAL (
-         SELECT gm2.content, gm2.created_at, u.name AS sender_name
+         SELECT gm2.content, gm2.created_at,
+                u.name           AS sender_name,
+                u.username       AS sender_username,
+                u.signing_key_id AS sender_signing_key_id
          FROM group_messages gm2
          JOIN users u ON u.id = gm2.sender_id
          WHERE gm2.group_id = g.id
@@ -59,19 +69,20 @@ router.get('/', authMiddleware, async (req, res) => {
        WHERE g.id IN (
          SELECT group_id FROM group_members WHERE user_id = $1
        )
-       GROUP BY g.id, last_msg.content, last_msg.created_at, last_msg.sender_name
+       GROUP BY g.id, last_msg.content, last_msg.created_at, last_msg.sender_name,
+                last_msg.sender_username, last_msg.sender_signing_key_id
        ORDER BY g.created_at DESC`,
       [req.user.id]
     );
 
-    const groups = result.rows.map(g => {
-      let lastMessage = g.last_message;
-      try {
-        const parsed = JSON.parse(g.last_message);
-        if (parsed.encrypted) lastMessage = '🔒 Encrypted message';
-      } catch {}
+    const groups = await Promise.all(result.rows.map(async g => {
+      const senderRow = {
+        username:       g.last_message_sender_username,
+        signing_key_id: g.last_message_sender_signing_key_id,
+      };
+      const lastMessage = await decryptGroupContent(g.last_message, senderRow, receiverRow, g.id);
       return { ...g, last_message: lastMessage };
-    });
+    }));
 
     return res.json({ success: true, groups });
   } catch (err) {
