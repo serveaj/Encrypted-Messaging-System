@@ -12,27 +12,26 @@ async function decryptContent(content, senderRow, receiverRow) {
   if (!parsed.encrypted) return content;
 
   if (!senderRow.signing_key_id || !receiverRow.encryption_key_id) return '[encrypted]';
+  if (!parsed.encryptedPayload || !parsed.encryptedSessionKey || !parsed.iv || !parsed.signature) return '[encrypted]';
 
   try {
     const res  = await fetch(`${ENCRYPTION_URL}/crypto/decrypt`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
-        senderUsername:        senderRow.username,
-        senderSigningKeyId:    senderRow.signing_key_id,
-        receiverUsername:      receiverRow.username,
+        senderUsername:          senderRow.username,
+        senderSigningKeyId:      senderRow.signing_key_id,
+        receiverUsername:        receiverRow.username,
         receiverEncryptionKeyId: receiverRow.encryption_key_id,
-        encryptedPayload:      parsed.encryptedPayload,
-        encryptedSessionKey:   parsed.encryptedSessionKey,
-        iv:                    parsed.iv,
-        signature:             parsed.signature,
+        encryptedPayload:        parsed.encryptedPayload,
+        encryptedSessionKey:     parsed.encryptedSessionKey,
+        iv:                      parsed.iv,
+        signature:               parsed.signature,
       }),
     });
     const data = await res.json();
-    if (!data.plaintext) {
-      console.error('[Decrypt] Encryption service error:', JSON.stringify(data));
-    }
-    return data.plaintext || '[decryption failed]';
+    if (data.error) console.error('[Decrypt] Encryption service error:', data.error);
+    return data.plaintext != null ? data.plaintext : '[decryption failed]';
   } catch (err) {
     console.error('[Decrypt] Fetch error:', err.message);
     return '[decryption failed]';

@@ -13,6 +13,7 @@ async function decryptGroupContent(content, senderRow, receiverRow, groupId) {
 
   const memberKey = parsed.memberKeys?.[receiverRow.username];
   if (!memberKey || !senderRow.signing_key_id || !receiverRow.encryption_key_id) return '[encrypted]';
+  if (!parsed.encryptedPayload || !parsed.iv || !parsed.signature) return '[encrypted]';
 
   try {
     const res  = await fetch(`${ENCRYPTION_URL}/crypto/decrypt-group`, {
@@ -31,8 +32,10 @@ async function decryptGroupContent(content, senderRow, receiverRow, groupId) {
       }),
     });
     const data = await res.json();
-    return data.plaintext || '[decryption failed]';
-  } catch {
+    if (data.error) console.error('[Decrypt Group] Encryption service error:', data.error);
+    return data.plaintext != null ? data.plaintext : '[decryption failed]';
+  } catch (err) {
+    console.error('[Decrypt Group] Fetch error:', err.message);
     return '[decryption failed]';
   }
 }
